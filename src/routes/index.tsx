@@ -7,7 +7,10 @@ import {
   getConversations,
   getConversation,
   updateConversationMode,
+  updateConversationStatus,
   sendOperatorMessage,
+  BOOKING_STATUSES,
+  type BookingStatus,
   type ConversationRow,
 } from "@/lib/conversations.functions";
 import { Button } from "@/components/ui/button";
@@ -15,7 +18,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
