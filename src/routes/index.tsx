@@ -88,10 +88,13 @@ function OperatorDashboard() {
   const listFn = useServerFn(getConversations);
   const detailFn = useServerFn(getConversation);
   const updateModeFn = useServerFn(updateConversationMode);
+  const updateStatusFn = useServerFn(updateConversationStatus);
   const sendFn = useServerFn(sendOperatorMessage);
 
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
   const [draft, setDraft] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | BookingStatus>("all");
+  const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const listQuery = useQuery({
     queryKey: ["conversations"],
