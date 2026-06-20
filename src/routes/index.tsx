@@ -255,16 +255,24 @@ function OperatorDashboard() {
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   <span className="truncate">{selected.phone ?? "Unknown"}</span>
                   <ModeBadge mode={selected.mode} />
+                  <StatusBadge status={selected.status} />
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Last activity {formatDateTime(selected.last_message_at)}
                 </p>
               </div>
-              <ModeToggle
-                mode={(selected.mode === "human" ? "human" : "bot") as "bot" | "human"}
-                pending={modeMutation.isPending}
-                onChange={(m) => modeMutation.mutate(m)}
-              />
+              <div className="flex items-center gap-4">
+                <StatusSelect
+                  status={(selected.status as BookingStatus | null) ?? null}
+                  saveState={statusSaveState}
+                  onChange={(s) => statusMutation.mutate(s)}
+                />
+                <ModeToggle
+                  mode={(selected.mode === "human" ? "human" : "bot") as "bot" | "human"}
+                  pending={modeMutation.isPending}
+                  onChange={(m) => modeMutation.mutate(m)}
+                />
+              </div>
             </header>
 
             <div className="flex-1 overflow-y-auto px-6 py-4">
