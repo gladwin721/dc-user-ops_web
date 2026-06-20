@@ -162,7 +162,31 @@ function OperatorDashboard() {
     },
   });
 
-  const rows = listQuery.data?.rows ?? [];
+  const statusMutation = useMutation({
+    mutationFn: async (status: BookingStatus) => {
+      if (!selected) throw new Error("No conversation selected");
+      setStatusSaveState("saving");
+      const res = await updateStatusFn({ data: { id: selected.id, status } });
+      if (!res.ok) throw new Error(res.error ?? "Failed to update status");
+      return status;
+    },
+    onSuccess: (status) => {
+      setStatusSaveState("saved");
+      toast.success(`Status set to ${STATUS_META[status].label}`);
+      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      setTimeout(() => setStatusSaveState("idle"), 1500);
+    },
+    onError: (err) => {
+      setStatusSaveState("error");
+      toast.error(err instanceof Error ? err.message : "Status change failed");
+      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+      setTimeout(() => setStatusSaveState("idle"), 2000);
+    },
+  });
+
+  const allRows = listQuery.data?.rows ?? [];
+  const rows = statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
   const listError = listQuery.data?.error;
 
   return (
