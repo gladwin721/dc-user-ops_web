@@ -202,6 +202,21 @@ function OperatorDashboard() {
             </p>
           </div>
         </header>
+        <div className="border-b p-2">
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as "all" | BookingStatus)}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {BOOKING_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {STATUS_META[s].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex-1 overflow-y-auto">
           {listError && (
             <div className="m-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
