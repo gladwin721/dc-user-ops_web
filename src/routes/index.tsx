@@ -7,7 +7,10 @@ import {
   getConversations,
   getConversation,
   updateConversationMode,
+  updateConversationStatus,
   sendOperatorMessage,
+  BOOKING_STATUSES,
+  type BookingStatus,
   type ConversationRow,
 } from "@/lib/conversations.functions";
 import { Button } from "@/components/ui/button";
@@ -15,7 +18,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -78,10 +88,13 @@ function OperatorDashboard() {
   const listFn = useServerFn(getConversations);
   const detailFn = useServerFn(getConversation);
   const updateModeFn = useServerFn(updateConversationMode);
+  const updateStatusFn = useServerFn(updateConversationStatus);
   const sendFn = useServerFn(sendOperatorMessage);
 
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
   const [draft, setDraft] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | BookingStatus>("all");
+  const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const listQuery = useQuery({
     queryKey: ["conversations"],
@@ -149,7 +162,31 @@ function OperatorDashboard() {
     },
   });
 
-  const rows = listQuery.data?.rows ?? [];
+  const statusMutation = useMutation({
+    mutationFn: async (status: BookingStatus) => {
+      if (!selected) throw new Error("No conversation selected");
+      setStatusSaveState("saving");
+      const res = await updateStatusFn({ data: { id: selected.id, status } });
+      if (!res.ok) throw new Error(res.error ?? "Failed to update status");
+      return status;
+    },
+    onSuccess: (status) => {
+      setStatusSaveState("saved");
+      toast.success(`Status set to ${STATUS_META[status].label}`);
+      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      setTimeout(() => setStatusSaveState("idle"), 1500);
+    },
+    onError: (err) => {
+      setStatusSaveState("error");
+      toast.error(err instanceof Error ? err.message : "Status change failed");
+      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+      setTimeout(() => setStatusSaveState("idle"), 2000);
+    },
+  });
+
+  const allRows = listQuery.data?.rows ?? [];
+  const rows = statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
   const listError = listQuery.data?.error;
 
   return (
@@ -165,6 +202,21 @@ function OperatorDashboard() {
             </p>
           </div>
         </header>
+        <div className="border-b p-2">
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as "all" | BookingStatus)}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {BOOKING_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {STATUS_META[s].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex-1 overflow-y-auto">
           {listError && (
             <div className="m-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
@@ -203,16 +255,24 @@ function OperatorDashboard() {
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   <span className="truncate">{selected.phone ?? "Unknown"}</span>
                   <ModeBadge mode={selected.mode} />
+                  <StatusBadge status={selected.status} />
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Last activity {formatDateTime(selected.last_message_at)}
                 </p>
               </div>
-              <ModeToggle
-                mode={(selected.mode === "human" ? "human" : "bot") as "bot" | "human"}
-                pending={modeMutation.isPending}
-                onChange={(m) => modeMutation.mutate(m)}
-              />
+              <div className="flex items-center gap-4">
+                <StatusSelect
+                  status={(selected.status as BookingStatus | null) ?? null}
+                  saveState={statusSaveState}
+                  onChange={(s) => statusMutation.mutate(s)}
+                />
+                <ModeToggle
+                  mode={(selected.mode === "human" ? "human" : "bot") as "bot" | "human"}
+                  pending={modeMutation.isPending}
+                  onChange={(m) => modeMutation.mutate(m)}
+                />
+              </div>
             </header>
 
             <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -284,6 +344,9 @@ function ConversationListItem({
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-sm font-medium">{row.phone ?? "Unknown"}</span>
           <ModeBadge mode={row.mode} small />
+        </div>
+        <div>
+          <StatusBadge status={row.status} small />
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <MapPin className="h-3 w-3" />
@@ -444,6 +507,103 @@ function DetailRow({
         {label}
       </dt>
       <dd className="text-right text-sm font-medium">{value ?? "—"}</dd>
+    </div>
+  );
+}
+
+const STATUS_META: Record<
+  BookingStatus,
+  { label: string; badgeClass: string; dotClass: string }
+> = {
+  new: {
+    label: "New",
+    badgeClass: "bg-muted text-muted-foreground border-transparent",
+    dotClass: "bg-muted-foreground",
+  },
+  booking_pending: {
+    label: "Booking Pending",
+    badgeClass: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30",
+    dotClass: "bg-orange-500",
+  },
+  cooking_confirmed: {
+    label: "Cooking Confirmed",
+    badgeClass: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30",
+    dotClass: "bg-blue-500",
+  },
+  completed: {
+    label: "Completed",
+    badgeClass: "bg-green-100 text-green-800 border-green-200 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/30",
+    dotClass: "bg-green-500",
+  },
+  cancelled: {
+    label: "Cancelled",
+    badgeClass: "bg-red-100 text-red-800 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30",
+    dotClass: "bg-red-500",
+  },
+  repeat_booking: {
+    label: "Repeat Booking",
+    badgeClass: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30",
+    dotClass: "bg-purple-500",
+  },
+};
+
+function isBookingStatus(v: string | null | undefined): v is BookingStatus {
+  return !!v && (BOOKING_STATUSES as readonly string[]).includes(v);
+}
+
+function StatusBadge({ status, small }: { status: string | null; small?: boolean }) {
+  if (!isBookingStatus(status)) {
+    return (
+      <Badge variant="outline" className={cn(small && "px-1.5 py-0 text-[10px]")}>
+        {status ?? "—"}
+      </Badge>
+    );
+  }
+  const meta = STATUS_META[status];
+  return (
+    <Badge className={cn("border", meta.badgeClass, small && "px-1.5 py-0 text-[10px]")}>
+      <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", meta.dotClass)} />
+      {meta.label}
+    </Badge>
+  );
+}
+
+function StatusSelect({
+  status,
+  saveState,
+  onChange,
+}: {
+  status: BookingStatus | null;
+  saveState: "idle" | "saving" | "saved" | "error";
+  onChange: (s: BookingStatus) => void;
+}) {
+  const value = isBookingStatus(status) ? status : "new";
+  return (
+    <div className="flex items-center gap-2">
+      <Label className="text-xs text-muted-foreground">Status</Label>
+      <Select
+        value={value}
+        disabled={saveState === "saving"}
+        onValueChange={(v) => onChange(v as BookingStatus)}
+      >
+        <SelectTrigger className="h-8 w-[180px] text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {BOOKING_STATUSES.map((s) => (
+            <SelectItem key={s} value={s}>
+              <span className="flex items-center gap-2">
+                <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[s].dotClass)} />
+                {STATUS_META[s].label}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <span className="w-4 text-muted-foreground">
+        {saveState === "saving" && <Loader2 className="h-4 w-4 animate-spin" />}
+        {saveState === "saved" && <Check className="h-4 w-4 text-green-600" />}
+      </span>
     </div>
   );
 }
