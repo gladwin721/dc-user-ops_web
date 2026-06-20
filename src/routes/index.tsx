@@ -255,7 +255,6 @@ function OperatorDashboard() {
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   <span className="truncate">{selected.phone ?? "Unknown"}</span>
                   <ModeBadge mode={selected.mode} />
-                  <StatusBadge status={selected.status} />
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Last activity {formatDateTime(selected.last_message_at)}
