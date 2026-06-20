@@ -74,6 +74,36 @@ export const updateConversationMode = createServerFn({ method: "POST" })
     return { ok: true, error: null as string | null };
   });
 
+export const BOOKING_STATUSES = [
+  "new",
+  "booking_pending",
+  "cooking_confirmed",
+  "completed",
+  "cancelled",
+  "repeat_booking",
+] as const;
+export type BookingStatus = (typeof BOOKING_STATUSES)[number];
+
+export const updateConversationStatus = createServerFn({ method: "POST" })
+  .inputValidator((input: { id: string | number; status: BookingStatus }) => {
+    if (input?.id === undefined || input?.id === null || input.id === "") {
+      throw new Error("id is required");
+    }
+    if (!BOOKING_STATUSES.includes(input?.status as BookingStatus)) {
+      throw new Error("invalid status");
+    }
+    return input;
+  })
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+    const { error } = await supabase
+      .from("conversations")
+      .update({ status: data.status })
+      .eq("id", data.id);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, error: null as string | null };
+  });
+
 export const sendOperatorMessage = createServerFn({ method: "POST" })
   .inputValidator((input: { conversation_id: string | number; phone: string | null; message: string }) => {
     if (!input || typeof input.message !== "string" || input.message.trim().length === 0) {
