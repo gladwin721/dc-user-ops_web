@@ -29,9 +29,15 @@ import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRo
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/inbox")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    id:
+      typeof search.id === "string" || typeof search.id === "number"
+        ? (search.id as string | number)
+        : undefined,
+  }),
   head: () => ({
     meta: [
-      { title: "DashCook — Operator Dashboard" },
+      { title: "DashCook — Inbox" },
       { name: "description", content: "Live customer support inbox for DashCook bookings." },
     ],
   }),
