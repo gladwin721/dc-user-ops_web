@@ -28,7 +28,7 @@ import {
 import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/inbox")({
   head: () => ({
     meta: [
       { title: "DashCook — Operator Dashboard" },
