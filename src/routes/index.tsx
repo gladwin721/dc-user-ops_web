@@ -1,23 +1,18 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 import {
   getConversations,
-  getConversation,
-  updateConversationMode,
-  updateConversationStatus,
-  sendOperatorMessage,
   BOOKING_STATUSES,
   type BookingStatus,
   type ConversationRow,
 } from "@/lib/conversations.functions";
+import { STATUS_META, isBookingStatus } from "@/lib/booking-status";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -25,17 +20,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Inbox as InboxIcon,
+  Clock3,
+  ChefHat,
+  CalendarCheck,
+  CalendarClock,
+  XCircle,
+  Search,
+  Bot,
+  UserRound,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "DashCook — Operator Dashboard" },
-      { name: "description", content: "Live customer support inbox for DashCook bookings." },
+      { title: "DashCook — Operations Dashboard" },
+      { name: "description", content: "Operations dashboard for DashCook bookings." },
     ],
   }),
-  component: OperatorDashboard,
+  component: DashboardPage,
   errorComponent: ({ error, reset }) => {
     const router = useRouter();
     return (
@@ -49,52 +62,17 @@ export const Route = createFileRoute("/")({
   notFoundComponent: () => <div className="p-8">Not found</div>,
 });
 
-type ParsedMessage = { role: "customer" | "bot" | "operator" | "system"; text: string };
-
-function parseHistory(history: string | null): ParsedMessage[] {
-  if (!history) return [];
-  const lines = history.split(/\r?\n/);
-  const msgs: ParsedMessage[] = [];
-  const speakerRe = /^\s*(Customer|User|Client|Bot|Assistant|Operator|Human|System)\s*[:\-]\s*(.*)$/i;
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (!line.trim()) continue;
-    const m = line.match(speakerRe);
-    if (m) {
-      const speaker = m[1].toLowerCase();
-      let role: ParsedMessage["role"] = "system";
-      if (speaker === "customer" || speaker === "user" || speaker === "client") role = "customer";
-      else if (speaker === "bot" || speaker === "assistant") role = "bot";
-      else if (speaker === "operator" || speaker === "human") role = "operator";
-      msgs.push({ role, text: m[2] });
-    } else if (msgs.length > 0) {
-      msgs[msgs.length - 1].text += "\n" + line;
-    } else {
-      msgs.push({ role: "system", text: line });
-    }
-  }
-  return msgs;
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-function formatDateTime(value: string | null): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return value;
-  return d.toLocaleString();
-}
-
-function OperatorDashboard() {
-  const qc = useQueryClient();
+function DashboardPage() {
+  const navigate = useNavigate();
   const listFn = useServerFn(getConversations);
-  const detailFn = useServerFn(getConversation);
-  const updateModeFn = useServerFn(updateConversationMode);
-  const updateStatusFn = useServerFn(updateConversationStatus);
-  const sendFn = useServerFn(sendOperatorMessage);
-
-  const [selectedId, setSelectedId] = useState<string | number | null>(null);
-  const [draft, setDraft] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | BookingStatus>("all");
-  const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const listQuery = useQuery({
     queryKey: ["conversations"],
@@ -103,505 +81,225 @@ function OperatorDashboard() {
     refetchIntervalInBackground: true,
   });
 
-  // Auto-select first conversation
-  useEffect(() => {
-    if (selectedId === null && listQuery.data?.rows?.length) {
-      setSelectedId(listQuery.data.rows[0].id);
+  const rows: ConversationRow[] = listQuery.data?.rows ?? [];
+  const today = todayStr();
+
+  const kpis = useMemo(() => {
+    const c = {
+      new: 0,
+      booking_pending: 0,
+      cooking_confirmed: 0,
+      today: 0,
+      upcoming: 0,
+      cancelled: 0,
+    };
+    for (const r of rows) {
+      if (r.status === "new") c.new++;
+      if (r.status === "booking_pending") c.booking_pending++;
+      if (r.status === "cooking_confirmed") c.cooking_confirmed++;
+      if (r.status === "cancelled") c.cancelled++;
+      if (r.booking_date === today && r.status !== "cancelled") c.today++;
+      if (
+        r.booking_date &&
+        r.booking_date >= today &&
+        (r.status === "booking_pending" || r.status === "cooking_confirmed")
+      ) {
+        c.upcoming++;
+      }
     }
-  }, [listQuery.data, selectedId]);
+    return c;
+  }, [rows, today]);
 
-  const detailQuery = useQuery({
-    queryKey: ["conversation", selectedId],
-    queryFn: () => detailFn({ data: { id: selectedId! } }),
-    enabled: selectedId !== null,
-    refetchInterval: 3000,
-    refetchIntervalInBackground: true,
-  });
+  // Filters
+  const [statusFilter, setStatusFilter] = useState<"all" | BookingStatus>("all");
+  const [areaFilter, setAreaFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [search, setSearch] = useState("");
 
-  const selected = detailQuery.data?.row ?? null;
-  const messages = useMemo(() => parseHistory(selected?.history ?? null), [selected?.history]);
+  const areas = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => r.area && set.add(r.area));
+    return Array.from(set).sort();
+  }, [rows]);
 
-  const sendMutation = useMutation({
-    mutationFn: async (text: string) => {
-      if (!selected) throw new Error("No conversation selected");
-      const res = await sendFn({
-        data: {
-          conversation_id: selected.id,
-          phone: selected.phone,
-          message: text,
-        },
+  const filtered = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    return rows
+      .filter((r) => {
+        if (statusFilter !== "all" && r.status !== statusFilter) return false;
+        if (areaFilter !== "all" && r.area !== areaFilter) return false;
+        if (dateFrom && (!r.booking_date || r.booking_date < dateFrom)) return false;
+        if (dateTo && (!r.booking_date || r.booking_date > dateTo)) return false;
+        if (s) {
+          const hay = `${r.phone ?? ""} ${r.area ?? ""}`.toLowerCase();
+          if (!hay.includes(s)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const da = a.booking_date ?? "9999-99-99";
+        const db = b.booking_date ?? "9999-99-99";
+        if (da !== db) return da < db ? -1 : 1;
+        const ta = a.booking_time ?? "99:99";
+        const tb = b.booking_time ?? "99:99";
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
       });
-      if (!res.ok) throw new Error(res.error ?? "Failed to send");
-      return res;
-    },
-    onSuccess: () => {
-      setDraft("");
-      toast.success("Message sent to operator webhook");
-      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
-      qc.invalidateQueries({ queryKey: ["conversations"] });
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Send failed");
-    },
-  });
+  }, [rows, statusFilter, areaFilter, dateFrom, dateTo, search]);
 
-  const modeMutation = useMutation({
-    mutationFn: async (mode: "bot" | "human") => {
-      if (!selected) throw new Error("No conversation selected");
-      const res = await updateModeFn({ data: { id: selected.id, mode } });
-      if (!res.ok) throw new Error(res.error ?? "Failed to update mode");
-      return mode;
-    },
-    onSuccess: (mode) => {
-      toast.success(`Mode set to ${mode}`);
-      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
-      qc.invalidateQueries({ queryKey: ["conversations"] });
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Mode change failed");
-    },
-  });
-
-  const statusMutation = useMutation({
-    mutationFn: async (status: BookingStatus) => {
-      if (!selected) throw new Error("No conversation selected");
-      setStatusSaveState("saving");
-      const res = await updateStatusFn({ data: { id: selected.id, status } });
-      if (!res.ok) throw new Error(res.error ?? "Failed to update status");
-      return status;
-    },
-    onSuccess: (status) => {
-      setStatusSaveState("saved");
-      toast.success(`Status set to ${STATUS_META[status].label}`);
-      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
-      qc.invalidateQueries({ queryKey: ["conversations"] });
-      setTimeout(() => setStatusSaveState("idle"), 1500);
-    },
-    onError: (err) => {
-      setStatusSaveState("error");
-      toast.error(err instanceof Error ? err.message : "Status change failed");
-      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
-      setTimeout(() => setStatusSaveState("idle"), 2000);
-    },
-  });
-
-  const allRows = listQuery.data?.rows ?? [];
-  const rows = statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
-  const listError = listQuery.data?.error;
+  function openInInbox(id: string | number) {
+    navigate({ to: "/inbox", search: { id } });
+  }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
-      {/* LEFT — Queue */}
-      <aside className="flex w-80 shrink-0 flex-col border-r">
-        <header className="flex items-center gap-2 border-b px-4 py-3">
-          <Inbox className="h-5 w-5 text-primary" />
-          <div>
-            <h1 className="text-sm font-semibold leading-tight">DashCook Inbox</h1>
-            <p className="text-xs text-muted-foreground">
-              {listQuery.isFetching ? "Refreshing…" : `${rows.length} conversations`}
-            </p>
-          </div>
-        </header>
-        <div className="border-b p-2">
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as "all" | BookingStatus)}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {BOOKING_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {STATUS_META[s].label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {listError && (
-            <div className="m-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
-              {listError}
-            </div>
-          )}
-          {!listError && rows.length === 0 && !listQuery.isLoading && (
-            <div className="m-3 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-              No conversations yet.
-            </div>
-          )}
-          <ul>
-            {rows.map((c) => (
-              <ConversationListItem
-                key={String(c.id)}
-                row={c}
-                active={selectedId === c.id}
-                onClick={() => setSelectedId(c.id)}
-              />
-            ))}
-          </ul>
-        </div>
-      </aside>
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-6">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight">Operations Dashboard</h1>
+        <p className="text-sm text-muted-foreground">
+          {listQuery.isFetching ? "Syncing…" : `Live from Supabase • ${rows.length} conversations`}
+        </p>
+      </header>
 
-      {/* CENTER — Conversation */}
-      <section className="flex min-w-0 flex-1 flex-col">
-        {!selected ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Select a conversation to view its history.
-          </div>
-        ) : (
-          <>
-            <header className="flex items-center justify-between border-b px-6 py-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span className="truncate">{selected.phone ?? "Unknown"}</span>
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Last activity {formatDateTime(selected.last_message_at)}
-                </p>
-              </div>
-              <div className="flex items-center gap-4">
-                <StatusSelect
-                  status={(selected.status as BookingStatus | null) ?? null}
-                  saveState={statusSaveState}
-                  onChange={(s) => statusMutation.mutate(s)}
-                />
-                <ModeToggle
-                  mode={(selected.mode === "human" ? "human" : "bot") as "bot" | "human"}
-                  pending={modeMutation.isPending}
-                  onChange={(m) => modeMutation.mutate(m)}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+        <Kpi label="New Requests" value={kpis.new} icon={<InboxIcon className="h-4 w-4" />} tone="bg-muted text-muted-foreground" />
+        <Kpi label="Booking Pending" value={kpis.booking_pending} icon={<Clock3 className="h-4 w-4" />} tone="bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200" />
+        <Kpi label="Cooking Confirmed" value={kpis.cooking_confirmed} icon={<ChefHat className="h-4 w-4" />} tone="bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-200" />
+        <Kpi label="Today's Jobs" value={kpis.today} icon={<CalendarCheck className="h-4 w-4" />} tone="bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-200" />
+        <Kpi label="Upcoming Jobs" value={kpis.upcoming} icon={<CalendarClock className="h-4 w-4" />} tone="bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-200" />
+        <Kpi label="Cancelled" value={kpis.cancelled} icon={<XCircle className="h-4 w-4" />} tone="bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-200" />
+      </div>
+
+      <Card>
+        <CardContent className="p-4 space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[200px]">
+              <label className="text-xs text-muted-foreground">Search phone or area</label>
+              <div className="relative mt-1">
+                <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-8"
+                  placeholder="e.g. +351… or Lisbon"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-            </header>
-
-            <div className="flex-1 overflow-y-auto px-6 py-4">
-              {messages.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No messages in history yet.</div>
-              ) : (
-                <ul className="space-y-3">
-                  {messages.map((m, i) => (
-                    <MessageBubble key={i} msg={m} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Status</label>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as "all" | BookingStatus)}>
+                <SelectTrigger className="mt-1 w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {BOOKING_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>{STATUS_META[s].label}</SelectItem>
                   ))}
-                </ul>
-              )}
+                </SelectContent>
+              </Select>
             </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Area</label>
+              <Select value={areaFilter} onValueChange={setAreaFilter}>
+                <SelectTrigger className="mt-1 w-[160px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All areas</SelectItem>
+                  {areas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">From</label>
+              <Input type="date" className="mt-1 w-[160px]" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">To</label>
+              <Input type="date" className="mt-1 w-[160px]" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
+            {(statusFilter !== "all" || areaFilter !== "all" || dateFrom || dateTo || search) && (
+              <Button variant="ghost" size="sm" onClick={() => { setStatusFilter("all"); setAreaFilter("all"); setDateFrom(""); setDateTo(""); setSearch(""); }}>
+                Clear
+              </Button>
+            )}
+          </div>
 
-            <Composer
-              value={draft}
-              onChange={setDraft}
-              onSend={() => sendMutation.mutate(draft)}
-              sending={sendMutation.isPending}
-            />
-          </>
-        )}
-      </section>
-
-      {/* RIGHT — Booking details */}
-      <aside className="hidden w-80 shrink-0 flex-col border-l lg:flex">
-        <header className="border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">Booking details</h2>
-          <p className="text-xs text-muted-foreground">From the selected conversation</p>
-        </header>
-        <div className="flex-1 overflow-y-auto p-4">
-          {!selected ? (
-            <p className="text-sm text-muted-foreground">No conversation selected.</p>
-          ) : (
-            <dl className="space-y-3 text-sm">
-              <DetailRow icon={<MapPin className="h-4 w-4" />} label="Area" value={selected.area} />
-              <DetailRow icon={<Calendar className="h-4 w-4" />} label="Date" value={selected.booking_date} />
-              <DetailRow icon={<Clock className="h-4 w-4" />} label="Time" value={selected.booking_time} />
-              <DetailRow icon={<Users className="h-4 w-4" />} label="People" value={selected.people != null ? String(selected.people) : null} />
-              <DetailRow icon={<MessageSquare className="h-4 w-4" />} label="Status" value={selected.status} />
-              <DetailRow icon={<Bot className="h-4 w-4" />} label="Mode" value={selected.mode} />
-              <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={selected.phone} />
-            </dl>
-          )}
-        </div>
-      </aside>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Area</TableHead>
+                  <TableHead className="text-right">People</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Mode</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                      No bookings match the current filters.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filtered.map((r) => (
+                    <TableRow
+                      key={String(r.id)}
+                      className="cursor-pointer"
+                      onClick={() => openInInbox(r.id)}
+                    >
+                      <TableCell className="font-medium">{r.booking_date ?? "—"}</TableCell>
+                      <TableCell>{r.booking_time ?? "—"}</TableCell>
+                      <TableCell>{r.area ?? "—"}</TableCell>
+                      <TableCell className="text-right">{r.people ?? "—"}</TableCell>
+                      <TableCell>{r.phone ?? "—"}</TableCell>
+                      <TableCell><StatusBadge status={r.status} /></TableCell>
+                      <TableCell><ModeBadge mode={r.mode} /></TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
-function ConversationListItem({
-  row,
-  active,
-  onClick,
-}: {
-  row: ConversationRow;
-  active: boolean;
-  onClick: () => void;
-}) {
+function Kpi({ label, value, icon, tone }: { label: string; value: number; icon: React.ReactNode; tone: string }) {
   return (
-    <li>
-      <button
-        onClick={onClick}
-        className={cn(
-          "flex w-full flex-col gap-1 border-b px-4 py-3 text-left transition-colors hover:bg-muted/50",
-          active && "bg-muted",
-        )}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium">{row.phone ?? "Unknown"}</span>
-          <ModeBadge mode={row.mode} small />
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">{label}</span>
+          <span className={cn("inline-flex h-7 w-7 items-center justify-center rounded-md", tone)}>{icon}</span>
         </div>
-        <div>
-          <StatusBadge status={row.status} small />
-        </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <MapPin className="h-3 w-3" />
-          <span className="truncate">{row.area ?? "—"}</span>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            {row.booking_date ?? "—"}
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {row.booking_time ?? "—"}
-          </span>
-        </div>
-        <div className="text-[11px] text-muted-foreground">
-          Updated {formatDateTime(row.last_message_at)}
-        </div>
-      </button>
-    </li>
+        <div className="mt-2 text-3xl font-semibold tabular-nums">{value}</div>
+      </CardContent>
+    </Card>
   );
 }
 
-function ModeBadge({ mode, small }: { mode: string | null; small?: boolean }) {
+function StatusBadge({ status }: { status: string | null }) {
+  if (!isBookingStatus(status)) {
+    return <Badge variant="outline">{status ?? "—"}</Badge>;
+  }
+  const m = STATUS_META[status];
+  return (
+    <Badge className={cn("border", m.badgeClass)}>
+      <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", m.dotClass)} />
+      {m.label}
+    </Badge>
+  );
+}
+
+function ModeBadge({ mode }: { mode: string | null }) {
   const isHuman = mode === "human";
   return (
-    <Badge
-      variant={isHuman ? "default" : "secondary"}
-      className={cn(small && "px-1.5 py-0 text-[10px]")}
-    >
+    <Badge variant={isHuman ? "default" : "secondary"} className="capitalize">
       {isHuman ? <UserRound className="mr-1 h-3 w-3" /> : <Bot className="mr-1 h-3 w-3" />}
       {mode ?? "—"}
     </Badge>
-  );
-}
-
-function ModeToggle({
-  mode,
-  pending,
-  onChange,
-}: {
-  mode: "bot" | "human";
-  pending: boolean;
-  onChange: (m: "bot" | "human") => void;
-}) {
-  const isHuman = mode === "human";
-  return (
-    <div className="flex items-center gap-2">
-      <Label htmlFor="mode-toggle" className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Bot className="h-3.5 w-3.5" />
-        Bot
-      </Label>
-      <Switch
-        id="mode-toggle"
-        checked={isHuman}
-        disabled={pending}
-        onCheckedChange={(v) => onChange(v ? "human" : "bot")}
-      />
-      <Label htmlFor="mode-toggle" className="flex items-center gap-1 text-xs text-muted-foreground">
-        <UserRound className="h-3.5 w-3.5" />
-        Human
-      </Label>
-    </div>
-  );
-}
-
-function MessageBubble({ msg }: { msg: ParsedMessage }) {
-  const isCustomer = msg.role === "customer";
-  const isBot = msg.role === "bot";
-  const isOperator = msg.role === "operator";
-  const isSystem = msg.role === "system";
-
-  if (isSystem) {
-    return (
-      <li className="text-center text-xs text-muted-foreground">{msg.text}</li>
-    );
-  }
-
-  return (
-    <li className={cn("flex", isCustomer ? "justify-start" : "justify-end")}>
-      <div className="flex max-w-[75%] flex-col gap-1">
-        <span className={cn("text-[11px] text-muted-foreground", isCustomer ? "text-left" : "text-right")}>
-          {isCustomer ? "Customer" : isBot ? "Bot" : "Operator"}
-        </span>
-        <div
-          className={cn(
-            "rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap",
-            isCustomer && "rounded-tl-sm bg-muted text-foreground",
-            isBot && "rounded-tr-sm border bg-background text-foreground",
-            isOperator && "rounded-tr-sm bg-primary text-primary-foreground",
-          )}
-        >
-          {msg.text}
-        </div>
-      </div>
-    </li>
-  );
-}
-
-function Composer({
-  value,
-  onChange,
-  onSend,
-  sending,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onSend: () => void;
-  sending: boolean;
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  function handleKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      if (value.trim() && !sending) onSend();
-    }
-  }
-
-  return (
-    <div className="border-t bg-background px-6 py-4">
-      <div className="flex items-end gap-3">
-        <Textarea
-          ref={ref}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKey}
-          placeholder="Type a message to send via WhatsApp (handled by Make.com webhook)…  ⌘/Ctrl+Enter to send"
-          rows={3}
-          className="resize-none"
-        />
-        <Button
-          onClick={onSend}
-          disabled={sending || value.trim().length === 0}
-          className="h-10 shrink-0"
-        >
-          <Send className="mr-2 h-4 w-4" />
-          {sending ? "Sending…" : "Send"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function DetailRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string | null | undefined;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3 border-b pb-2 last:border-0">
-      <dt className="flex items-center gap-2 text-xs text-muted-foreground">
-        {icon}
-        {label}
-      </dt>
-      <dd className="text-right text-sm font-medium">{value ?? "—"}</dd>
-    </div>
-  );
-}
-
-const STATUS_META: Record<
-  BookingStatus,
-  { label: string; badgeClass: string; dotClass: string }
-> = {
-  new: {
-    label: "New",
-    badgeClass: "bg-muted text-muted-foreground border-transparent",
-    dotClass: "bg-muted-foreground",
-  },
-  booking_pending: {
-    label: "Booking Pending",
-    badgeClass: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30",
-    dotClass: "bg-orange-500",
-  },
-  cooking_confirmed: {
-    label: "Cooking Confirmed",
-    badgeClass: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30",
-    dotClass: "bg-blue-500",
-  },
-  completed: {
-    label: "Completed",
-    badgeClass: "bg-green-100 text-green-800 border-green-200 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/30",
-    dotClass: "bg-green-500",
-  },
-  cancelled: {
-    label: "Cancelled",
-    badgeClass: "bg-red-100 text-red-800 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30",
-    dotClass: "bg-red-500",
-  },
-  repeat_booking: {
-    label: "Repeat Booking",
-    badgeClass: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30",
-    dotClass: "bg-purple-500",
-  },
-};
-
-function isBookingStatus(v: string | null | undefined): v is BookingStatus {
-  return !!v && (BOOKING_STATUSES as readonly string[]).includes(v);
-}
-
-function StatusBadge({ status, small }: { status: string | null; small?: boolean }) {
-  if (!isBookingStatus(status)) {
-    return (
-      <Badge variant="outline" className={cn(small && "px-1.5 py-0 text-[10px]")}>
-        {status ?? "—"}
-      </Badge>
-    );
-  }
-  const meta = STATUS_META[status];
-  return (
-    <Badge className={cn("border", meta.badgeClass, small && "px-1.5 py-0 text-[10px]")}>
-      <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", meta.dotClass)} />
-      {meta.label}
-    </Badge>
-  );
-}
-
-function StatusSelect({
-  status,
-  saveState,
-  onChange,
-}: {
-  status: BookingStatus | null;
-  saveState: "idle" | "saving" | "saved" | "error";
-  onChange: (s: BookingStatus) => void;
-}) {
-  const value = isBookingStatus(status) ? status : "new";
-  return (
-    <div className="flex items-center gap-2">
-      <Label className="text-xs text-muted-foreground">Status</Label>
-      <Select
-        value={value}
-        disabled={saveState === "saving"}
-        onValueChange={(v) => onChange(v as BookingStatus)}
-      >
-        <SelectTrigger className="h-8 w-[180px] text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {BOOKING_STATUSES.map((s) => (
-            <SelectItem key={s} value={s}>
-              <span className="flex items-center gap-2">
-                <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[s].dotClass)} />
-                {STATUS_META[s].label}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <span className="w-4 text-muted-foreground">
-        {saveState === "saving" && <Loader2 className="h-4 w-4 animate-spin" />}
-        {saveState === "saved" && <Check className="h-4 w-4 text-green-600" />}
-      </span>
-    </div>
   );
 }
