@@ -97,10 +97,18 @@ function OperatorDashboard() {
   const updateStatusFn = useServerFn(updateConversationStatus);
   const sendFn = useServerFn(sendOperatorMessage);
 
-  const [selectedId, setSelectedId] = useState<string | number | null>(null);
+  const search = Route.useSearch();
+  const [selectedId, setSelectedId] = useState<string | number | null>(search.id ?? null);
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | BookingStatus>("all");
   const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  // Sync URL ?id= -> selection
+  useEffect(() => {
+    if (search.id !== undefined && search.id !== selectedId) {
+      setSelectedId(search.id);
+    }
+  }, [search.id]);
 
   const listQuery = useQuery({
     queryKey: ["conversations"],
