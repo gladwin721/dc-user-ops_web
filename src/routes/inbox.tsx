@@ -204,7 +204,7 @@ function OperatorDashboard() {
   const listError = listQuery.data?.error;
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+    <div className="flex h-[calc(100vh-3rem)] w-full overflow-hidden bg-background text-foreground">
       {/* LEFT — Queue */}
       <aside className="flex w-80 shrink-0 flex-col border-r">
         <header className="flex items-center gap-2 border-b px-4 py-3">
