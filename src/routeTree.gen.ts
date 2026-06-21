@@ -10,32 +10,52 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as InboxRouteImport } from './routes/inbox'
+import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as IndexRouteImport } from './routes/index'
 
 const InboxRoute = InboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
   '/inbox': typeof InboxRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
   '/inbox': typeof InboxRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
   '/inbox': typeof InboxRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/inbox'
+  fullPaths: '/' | '/calendar' | '/inbox'
   fileRoutesByTo: FileRoutesByTo
-  to: '/inbox'
-  id: '__root__' | '/inbox'
+  to: '/' | '/calendar' | '/inbox'
+  id: '__root__' | '/' | '/calendar' | '/inbox'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
+  CalendarRoute: typeof CalendarRoute
   InboxRoute: typeof InboxRoute
 }
 
@@ -48,10 +68,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
+  CalendarRoute: CalendarRoute,
   InboxRoute: InboxRoute,
 }
 export const routeTree = rootRouteImport
