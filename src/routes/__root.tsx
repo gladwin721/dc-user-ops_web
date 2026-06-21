@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { TopNav } from "@/components/TopNav";
 
 function NotFoundComponent() {
   return (
@@ -123,8 +124,12 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <div className="flex min-h-screen flex-col bg-background text-foreground">
+        <TopNav />
+        <main className="flex-1 min-h-0">
+          <Outlet />
+        </main>
+      </div>
       <Toaster richColors position="top-right" />
     </QueryClientProvider>
   );
