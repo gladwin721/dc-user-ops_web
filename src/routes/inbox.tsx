@@ -328,6 +328,8 @@ function OperatorDashboard() {
               <DetailRow icon={<Bot className="h-4 w-4" />} label="Mode" value={selected.mode} />
               <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={selected.phone} />
             </dl>
+            <CustomerLocation lat={selected.location_lat} lng={selected.location_lng} />
+
           )}
         </div>
       </aside>
