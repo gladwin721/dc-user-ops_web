@@ -23,7 +23,10 @@ export type ConversationRow = {
   status: string | null;
   last_message_at: string | null;
   history: string | null;
+  location_lat: number | string | null;
+  location_lng: number | string | null;
 };
+
 
 export const getConversations = createServerFn({ method: "GET" }).handler(async () => {
   const supabase = await getSupabase();
