@@ -51,9 +51,10 @@ export const getConversation = createServerFn({ method: "GET" })
     const supabase = await getSupabase();
     const { data: row, error } = await supabase
       .from("conversations")
-      .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, history")
+      .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, history, location_lat, location_lng")
       .eq("id", data.id)
       .maybeSingle();
+
     if (error) return { row: null as ConversationRow | null, error: error.message };
     return { row: (row ?? null) as ConversationRow | null, error: null as string | null };
   });
