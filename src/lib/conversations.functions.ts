@@ -32,9 +32,10 @@ export const getConversations = createServerFn({ method: "GET" }).handler(async 
   const supabase = await getSupabase();
   const { data, error } = await supabase
     .from("conversations")
-    .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at")
+    .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, location_lat, location_lng")
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .limit(200);
+
   if (error) return { rows: [] as ConversationRow[], error: error.message };
   return { rows: (data ?? []) as ConversationRow[], error: null as string | null };
 });
