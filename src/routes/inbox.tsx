@@ -528,6 +528,50 @@ function DetailRow({
   );
 }
 
+function CustomerLocation({
+  lat,
+  lng,
+}: {
+  lat: number | string | null | undefined;
+  lng: number | string | null | undefined;
+}) {
+  if (lat == null || lng == null) return null;
+  const latNum = typeof lat === "string" ? parseFloat(lat) : lat;
+  const lngNum = typeof lng === "string" ? parseFloat(lng) : lng;
+  if (Number.isNaN(latNum) || Number.isNaN(lngNum)) return null;
+  const url = `https://maps.google.com/?q=${latNum},${lngNum}`;
+  return (
+    <div className="space-y-2 border-t pt-3">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+        <MapPin className="h-4 w-4 text-primary" />
+        Customer Location
+      </h3>
+      <div className="space-y-1 text-sm">
+        <div className="flex justify-between gap-3">
+          <span className="text-xs text-muted-foreground">Latitude</span>
+          <span className="font-medium">{latNum}</span>
+        </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-xs text-muted-foreground">Longitude</span>
+          <span className="font-medium">{lngNum}</span>
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full"
+        asChild
+      >
+        <a href={url} target="_blank" rel="noreferrer noopener">
+          <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+          Open in Google Maps
+        </a>
+      </Button>
+    </div>
+  );
+}
+
+
 const STATUS_META: Record<
   BookingStatus,
   { label: string; badgeClass: string; dotClass: string }
