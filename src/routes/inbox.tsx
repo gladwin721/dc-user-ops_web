@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check } from "lucide-react";
+import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/inbox")({
@@ -319,15 +319,20 @@ function OperatorDashboard() {
           {!selected ? (
             <p className="text-sm text-muted-foreground">No conversation selected.</p>
           ) : (
-            <dl className="space-y-3 text-sm">
-              <DetailRow icon={<MapPin className="h-4 w-4" />} label="Area" value={selected.area} />
-              <DetailRow icon={<Calendar className="h-4 w-4" />} label="Date" value={selected.booking_date} />
-              <DetailRow icon={<Clock className="h-4 w-4" />} label="Time" value={selected.booking_time} />
-              <DetailRow icon={<Users className="h-4 w-4" />} label="People" value={selected.people != null ? String(selected.people) : null} />
-              <DetailRow icon={<MessageSquare className="h-4 w-4" />} label="Status" value={selected.status} />
-              <DetailRow icon={<Bot className="h-4 w-4" />} label="Mode" value={selected.mode} />
-              <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={selected.phone} />
-            </dl>
+            <div className="space-y-5">
+              <dl className="space-y-3 text-sm">
+                <DetailRow icon={<MapPin className="h-4 w-4" />} label="Area" value={selected.area} />
+                <DetailRow icon={<Calendar className="h-4 w-4" />} label="Date" value={selected.booking_date} />
+                <DetailRow icon={<Clock className="h-4 w-4" />} label="Time" value={selected.booking_time} />
+                <DetailRow icon={<Users className="h-4 w-4" />} label="People" value={selected.people != null ? String(selected.people) : null} />
+                <DetailRow icon={<MessageSquare className="h-4 w-4" />} label="Status" value={selected.status} />
+                <DetailRow icon={<Bot className="h-4 w-4" />} label="Mode" value={selected.mode} />
+                <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={selected.phone} />
+              </dl>
+              <CustomerLocation lat={selected.location_lat} lng={selected.location_lng} />
+            </div>
+
+
           )}
         </div>
       </aside>
@@ -522,6 +527,50 @@ function DetailRow({
     </div>
   );
 }
+
+function CustomerLocation({
+  lat,
+  lng,
+}: {
+  lat: number | string | null | undefined;
+  lng: number | string | null | undefined;
+}) {
+  if (lat == null || lng == null) return null;
+  const latNum = typeof lat === "string" ? parseFloat(lat) : lat;
+  const lngNum = typeof lng === "string" ? parseFloat(lng) : lng;
+  if (Number.isNaN(latNum) || Number.isNaN(lngNum)) return null;
+  const url = `https://maps.google.com/?q=${latNum},${lngNum}`;
+  return (
+    <div className="space-y-2 border-t pt-3">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+        <MapPin className="h-4 w-4 text-primary" />
+        Customer Location
+      </h3>
+      <div className="space-y-1 text-sm">
+        <div className="flex justify-between gap-3">
+          <span className="text-xs text-muted-foreground">Latitude</span>
+          <span className="font-medium">{latNum}</span>
+        </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-xs text-muted-foreground">Longitude</span>
+          <span className="font-medium">{lngNum}</span>
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full"
+        asChild
+      >
+        <a href={url} target="_blank" rel="noreferrer noopener">
+          <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+          Open in Google Maps
+        </a>
+      </Button>
+    </div>
+  );
+}
+
 
 const STATUS_META: Record<
   BookingStatus,
