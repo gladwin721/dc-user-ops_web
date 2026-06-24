@@ -40,7 +40,7 @@ import { cn } from "@/lib/utils";
 
 type View = "month" | "week" | "day";
 
-export const Route = createFileRoute("/calendar")({
+export const Route = createFileRoute("/_authenticated/calendar")({
   head: () => ({
     meta: [
       { title: "DashCook — Calendar" },

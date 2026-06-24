@@ -1,4 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
+
 
 async function getSupabase() {
   const url = process.env.CUSTOM_SUPABASE_URL;

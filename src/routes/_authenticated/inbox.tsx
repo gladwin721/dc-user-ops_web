@@ -28,7 +28,7 @@ import {
 import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/inbox")({
+export const Route = createFileRoute("/_authenticated/inbox")({
   validateSearch: (search: Record<string, unknown>) => ({
     id:
       typeof search.id === "string" || typeof search.id === "number"
