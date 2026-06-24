@@ -1,10 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 async function getSupabase() {
   const url = process.env.CUSTOM_SUPABASE_URL;
   const anonKey = process.env.CUSTOM_SUPABASE_ANON_KEY;
   if (!url || !anonKey) {
-    throw new Error("Missing CUSTOM_SUPABASE_URL or CUSTOM_SUPABASE_ANON_KEY");
+    console.error("[conversations] Missing CUSTOM_SUPABASE_URL or CUSTOM_SUPABASE_ANON_KEY");
+    throw new Error("Service temporarily unavailable");
   }
   const { createClient } = await import("@supabase/supabase-js");
   return createClient(url, anonKey, {
@@ -27,20 +29,29 @@ export type ConversationRow = {
   location_lng: number | string | null;
 };
 
+const GENERIC_READ_ERROR = "Unable to load conversations";
+const GENERIC_WRITE_ERROR = "Unable to save changes";
+const GENERIC_SEND_ERROR = "Unable to send message";
 
-export const getConversations = createServerFn({ method: "GET" }).handler(async () => {
-  const supabase = await getSupabase();
-  const { data, error } = await supabase
-    .from("conversations")
-    .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, location_lat, location_lng")
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(200);
+export const getConversations = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const supabase = await getSupabase();
+    const { data, error } = await supabase
+      .from("conversations")
+      .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, location_lat, location_lng")
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(200);
 
-  if (error) return { rows: [] as ConversationRow[], error: error.message };
-  return { rows: (data ?? []) as ConversationRow[], error: null as string | null };
-});
+    if (error) {
+      console.error("[conversations] list error:", error);
+      return { rows: [] as ConversationRow[], error: GENERIC_READ_ERROR };
+    }
+    return { rows: (data ?? []) as ConversationRow[], error: null as string | null };
+  });
 
 export const getConversation = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string | number }) => {
     if (input?.id === undefined || input?.id === null || input.id === "") {
       throw new Error("id is required");
@@ -55,11 +66,15 @@ export const getConversation = createServerFn({ method: "GET" })
       .eq("id", data.id)
       .maybeSingle();
 
-    if (error) return { row: null as ConversationRow | null, error: error.message };
+    if (error) {
+      console.error("[conversations] detail error:", error);
+      return { row: null as ConversationRow | null, error: GENERIC_READ_ERROR };
+    }
     return { row: (row ?? null) as ConversationRow | null, error: null as string | null };
   });
 
 export const updateConversationMode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string | number; mode: "bot" | "human" }) => {
     if (input?.id === undefined || input?.id === null || input.id === "") {
       throw new Error("id is required");
@@ -75,7 +90,10 @@ export const updateConversationMode = createServerFn({ method: "POST" })
       .from("conversations")
       .update({ mode: data.mode })
       .eq("id", data.id);
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      console.error("[conversations] update mode error:", error);
+      return { ok: false, error: GENERIC_WRITE_ERROR };
+    }
     return { ok: true, error: null as string | null };
   });
 
@@ -90,6 +108,7 @@ export const BOOKING_STATUSES = [
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 export const updateConversationStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string | number; status: BookingStatus }) => {
     if (input?.id === undefined || input?.id === null || input.id === "") {
       throw new Error("id is required");
@@ -105,11 +124,15 @@ export const updateConversationStatus = createServerFn({ method: "POST" })
       .from("conversations")
       .update({ status: data.status })
       .eq("id", data.id);
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      console.error("[conversations] update status error:", error);
+      return { ok: false, error: GENERIC_WRITE_ERROR };
+    }
     return { ok: true, error: null as string | null };
   });
 
 export const sendOperatorMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((input: { conversation_id: string | number; phone: string | null; message: string }) => {
     if (!input || typeof input.message !== "string" || input.message.trim().length === 0) {
       throw new Error("message is required");
@@ -122,7 +145,8 @@ export const sendOperatorMessage = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const webhookUrl = process.env.MAKE_OPERATOR_WEBHOOK;
     if (!webhookUrl) {
-      return { ok: false, error: "MAKE_OPERATOR_WEBHOOK is not set" };
+      console.error("[conversations] MAKE_OPERATOR_WEBHOOK is not set");
+      return { ok: false, error: GENERIC_SEND_ERROR };
     }
     try {
       const res = await fetch(webhookUrl, {
@@ -134,12 +158,14 @@ export const sendOperatorMessage = createServerFn({ method: "POST" })
           message: data.message,
         }),
       });
-      const text = await res.text();
       if (!res.ok) {
-        return { ok: false, error: `Webhook responded ${res.status}: ${text.slice(0, 300)}` };
+        const text = await res.text();
+        console.error(`[conversations] webhook ${res.status}:`, text.slice(0, 500));
+        return { ok: false, error: GENERIC_SEND_ERROR };
       }
       return { ok: true, error: null as string | null };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      console.error("[conversations] webhook fetch failed:", e);
+      return { ok: false, error: GENERIC_SEND_ERROR };
     }
   });

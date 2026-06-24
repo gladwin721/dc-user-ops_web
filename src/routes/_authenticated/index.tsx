@@ -41,7 +41,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
     meta: [
       { title: "DashCook — Operations Dashboard" },
@@ -54,7 +54,7 @@ export const Route = createFileRoute("/")({
     return (
       <div className="p-8 space-y-3">
         <h1 className="text-xl font-semibold">Dashboard failed to load</h1>
-        <pre className="rounded bg-muted p-3 text-sm whitespace-pre-wrap">{error.message}</pre>
+        <p className="text-sm text-muted-foreground">Something went wrong. Please try again.</p>
         <Button onClick={() => { reset(); router.invalidate(); }}>Retry</Button>
       </div>
     );
