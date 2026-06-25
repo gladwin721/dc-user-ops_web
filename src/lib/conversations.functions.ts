@@ -146,7 +146,56 @@ export const updateConversationStatus = createServerFn({ method: "POST" })
       return { ok: false, error: GENERIC_WRITE_ERROR };
     }
     return { ok: true, error: null as string | null };
+
+export const saveBookingStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: {
+    id: string | number;
+    status: BookingStatus;
+    cancellation_reason?: string | null;
+  }) => {
+    if (input?.id === undefined || input?.id === null || input.id === "") {
+      throw new Error("id is required");
+    }
+    if (!BOOKING_STATUSES.includes(input?.status as BookingStatus)) {
+      throw new Error("invalid status");
+    }
+    if (input.status === "cancelled") {
+      const r = (input.cancellation_reason ?? "").trim();
+      if (!r) throw new Error("cancellation_reason is required when cancelling");
+      if (r.length > 2000) throw new Error("cancellation_reason too long");
+    }
+    return input;
+  })
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+
+    // 1. Update conversations.status — DB trigger syncs orders.status
+    const { error: statusErr } = await supabase
+      .from("conversations")
+      .update({ status: data.status })
+      .eq("id", data.id);
+    if (statusErr) {
+      console.error("[conversations] save status error:", statusErr);
+      return { ok: false, error: GENERIC_WRITE_ERROR };
+    }
+
+    // 2. If cancelled, update orders.cancellation_reason only
+    if (data.status === "cancelled") {
+      const reason = (data.cancellation_reason ?? "").trim();
+      const { error: orderErr } = await supabase
+        .from("orders")
+        .update({ cancellation_reason: reason })
+        .eq("conversation_id", data.id);
+      if (orderErr) {
+        console.error("[conversations] save cancellation reason error:", orderErr);
+        return { ok: false, error: GENERIC_WRITE_ERROR };
+      }
+    }
+
+    return { ok: true, error: null as string | null };
   });
+
 
 export const sendOperatorMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
