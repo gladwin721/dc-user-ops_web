@@ -140,6 +140,42 @@ function OperatorDashboard() {
   const selected = detailQuery.data?.row ?? null;
   const messages = useMemo(() => parseHistory(selected?.history ?? null), [selected?.history]);
 
+  // Preload cancellation reason whenever the selected conversation (or its server-side
+  // reason / status) changes. Also resets pending-cancel UI when a different
+  // conversation is opened.
+  const lastSyncedRef = useRef<{ id: string | number | null; reason: string | null }>({
+    id: null,
+    reason: null,
+  });
+  useEffect(() => {
+    if (!selected) {
+      setPendingCancel(false);
+      setReasonChoice("");
+      setOtherText("");
+      lastSyncedRef.current = { id: null, reason: null };
+      return;
+    }
+    const serverReason = (selected.cancellation_reason ?? null) as string | null;
+    const sameRow = lastSyncedRef.current.id === selected.id;
+    if (!sameRow || lastSyncedRef.current.reason !== serverReason) {
+      lastSyncedRef.current = { id: selected.id, reason: serverReason };
+      if (serverReason && CANCELLATION_REASONS.includes(serverReason)) {
+        setReasonChoice(serverReason);
+        setOtherText("");
+      } else if (serverReason) {
+        setReasonChoice("Other");
+        setOtherText(serverReason);
+      } else {
+        setReasonChoice("");
+        setOtherText("");
+      }
+    }
+    if (!sameRow) {
+      setPendingCancel(false);
+    }
+  }, [selected]);
+
+
   const sendMutation = useMutation({
     mutationFn: async (text: string) => {
       if (!selected) throw new Error("No conversation selected");
