@@ -670,3 +670,116 @@ function StatusSelect({
     </div>
   );
 }
+
+// ---------- Tab notifications ----------
+
+const BASE_TITLE = "DashCook — Inbox";
+
+function playBeep() {
+  try {
+    const AC = (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext);
+    const ctx = new AC();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.value = 0.05;
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.15);
+    setTimeout(() => ctx.close(), 300);
+  } catch {
+    // ignore
+  }
+}
+
+function useTabNotifications(rows: ConversationRow[], selectedId: string | number | null) {
+  const lastSeenRef = useRef<Map<string, string> | null>(null);
+  const initializedRef = useRef(false);
+  const [unread, setUnread] = useState(0);
+
+  // Ask for browser notification permission once on mount
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
+  // Clear unread when tab regains focus
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisibility = () => {
+      if (!document.hidden) setUnread(0);
+    };
+    const onFocus = () => setUnread(0);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
+  // Detect new customer activity (last_message_at advanced)
+  useEffect(() => {
+    if (!rows.length) return;
+    const prev = lastSeenRef.current;
+    const next = new Map<string, string>();
+    let newCount = 0;
+    let latestPhone: string | null = null;
+
+    for (const r of rows) {
+      const key = String(r.id);
+      const ts = r.last_message_at ?? "";
+      next.set(key, ts);
+      if (prev && ts) {
+        const prevTs = prev.get(key);
+        const isNewer = !prevTs || ts > prevTs;
+        const isHidden = typeof document !== "undefined" && document.hidden;
+        const notActive = r.id !== selectedId;
+        if (isNewer && (isHidden || notActive)) {
+          newCount++;
+          latestPhone = r.phone ?? latestPhone;
+        }
+      }
+    }
+
+    lastSeenRef.current = next;
+
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      return; // skip first run
+    }
+
+    if (newCount > 0) {
+      setUnread((u) => u + newCount);
+      playBeep();
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        try {
+          const n = new Notification("New message — DashCook", {
+            body: latestPhone ? `From ${latestPhone}` : `${newCount} new message${newCount > 1 ? "s" : ""}`,
+            tag: "dashcook-inbox",
+          });
+          n.onclick = () => {
+            window.focus();
+            n.close();
+          };
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }, [rows, selectedId]);
+
+  // Update tab title
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const prev = document.title;
+    document.title = unread > 0 ? `(${unread}) ${BASE_TITLE}` : BASE_TITLE;
+    return () => {
+      document.title = prev;
+    };
+  }, [unread]);
+}
+
