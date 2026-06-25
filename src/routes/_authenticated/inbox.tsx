@@ -673,6 +673,86 @@ function CustomerLocation({
   );
 }
 
+const CANCELLATION_REASONS = [
+  "Customer no longer required the service",
+  "Customer unreachable",
+  "No cook available",
+  "Cook unavailable",
+  "Outside service area",
+  "Requested time unavailable",
+  "Duplicate booking",
+  "Fake / spam enquiry",
+  "Other",
+] as const;
+
+function CancellationReasonBar({
+  reasonChoice,
+  otherText,
+  onChoiceChange,
+  onOtherChange,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  reasonChoice: string;
+  otherText: string;
+  onChoiceChange: (v: string) => void;
+  onOtherChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: (() => void) | null;
+  saving: boolean;
+}) {
+  const isOther = reasonChoice === "Other";
+  const canSave = isOther ? otherText.trim().length > 0 : reasonChoice.trim().length > 0;
+  return (
+    <div className="border-b bg-muted/30 px-6 py-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="flex min-w-[260px] flex-1 items-center gap-2">
+          <Label className="shrink-0 text-xs text-muted-foreground">
+            Cancellation Reason <span className="text-destructive">*</span>
+          </Label>
+          <Select value={reasonChoice} onValueChange={onChoiceChange} disabled={saving}>
+            <SelectTrigger className="h-8 flex-1 text-xs">
+              <SelectValue placeholder="Select a reason…" />
+            </SelectTrigger>
+            <SelectContent>
+              {CANCELLATION_REASONS.map((r) => (
+                <SelectItem key={r} value={r} className="text-xs">
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          {onCancel && (
+            <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
+              Cancel
+            </Button>
+          )}
+          <Button size="sm" onClick={onSave} disabled={!canSave || saving}>
+            {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Save
+          </Button>
+        </div>
+      </div>
+      {isOther && (
+        <div className="mt-2 space-y-1">
+          <Label className="text-xs text-muted-foreground">Please specify</Label>
+          <Textarea
+            value={otherText}
+            onChange={(e) => onOtherChange(e.target.value)}
+            placeholder="Describe the cancellation reason…"
+            rows={2}
+            disabled={saving}
+            className="resize-none text-sm"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 const STATUS_META: Record<
   BookingStatus,
