@@ -146,6 +146,8 @@ export const updateConversationStatus = createServerFn({ method: "POST" })
       return { ok: false, error: GENERIC_WRITE_ERROR };
     }
     return { ok: true, error: null as string | null };
+  });
+
 
 export const saveBookingStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
