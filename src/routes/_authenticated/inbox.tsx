@@ -177,12 +177,18 @@ function OperatorDashboard() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: async (status: BookingStatus) => {
+    mutationFn: async (args: { status: BookingStatus; cancellation_reason?: string | null }) => {
       if (!selected) throw new Error("No conversation selected");
       setStatusSaveState("saving");
-      const res = await updateStatusFn({ data: { id: selected.id, status } });
+      const res = await saveStatusFn({
+        data: {
+          id: selected.id,
+          status: args.status,
+          cancellation_reason: args.cancellation_reason ?? null,
+        },
+      });
       if (!res.ok) throw new Error(res.error ?? "Failed to update status");
-      return status;
+      return args.status;
     },
     onSuccess: (status) => {
       setStatusSaveState("saved");
