@@ -673,7 +673,7 @@ function CustomerLocation({
   );
 }
 
-const CANCELLATION_REASONS = [
+const CANCELLATION_REASONS: readonly string[] = [
   "Customer no longer required the service",
   "Customer unreachable",
   "No cook available",
@@ -683,7 +683,7 @@ const CANCELLATION_REASONS = [
   "Duplicate booking",
   "Fake / spam enquiry",
   "Other",
-] as const;
+];
 
 function CancellationReasonBar({
   reasonChoice,
