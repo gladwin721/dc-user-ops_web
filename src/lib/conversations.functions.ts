@@ -71,7 +71,23 @@ export const getConversation = createServerFn({ method: "GET" })
       console.error("[conversations] detail error:", error);
       return { row: null as ConversationRow | null, error: GENERIC_READ_ERROR };
     }
-    return { row: (row ?? null) as ConversationRow | null, error: null as string | null };
+
+    let cancellation_reason: string | null = null;
+    if (row) {
+      const { data: order, error: orderErr } = await supabase
+        .from("orders")
+        .select("cancellation_reason")
+        .eq("conversation_id", data.id)
+        .maybeSingle();
+      if (orderErr) {
+        console.error("[conversations] order lookup error:", orderErr);
+      } else if (order) {
+        cancellation_reason = (order.cancellation_reason as string | null) ?? null;
+      }
+    }
+
+    const merged = row ? ({ ...row, cancellation_reason } as ConversationRow) : null;
+    return { row: merged, error: null as string | null };
   });
 
 export const updateConversationMode = createServerFn({ method: "POST" })
