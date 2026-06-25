@@ -27,6 +27,7 @@ export type ConversationRow = {
   history: string | null;
   location_lat: number | string | null;
   location_lng: number | string | null;
+  cancellation_reason?: string | null;
 };
 
 const GENERIC_READ_ERROR = "Unable to load conversations";
