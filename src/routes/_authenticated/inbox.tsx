@@ -7,7 +7,7 @@ import {
   getConversations,
   getConversation,
   updateConversationMode,
-  updateConversationStatus,
+  saveBookingStatus,
   sendOperatorMessage,
   BOOKING_STATUSES,
   type BookingStatus,
