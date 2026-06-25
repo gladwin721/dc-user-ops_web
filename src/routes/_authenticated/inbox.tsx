@@ -102,6 +102,11 @@ function OperatorDashboard() {
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | BookingStatus>("all");
   const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // Pending-cancel UX: when operator picks "Cancelled" in the dropdown, we hold off
+  // saving until they pick a reason and click Save.
+  const [pendingCancel, setPendingCancel] = useState(false);
+  const [reasonChoice, setReasonChoice] = useState<string>("");
+  const [otherText, setOtherText] = useState<string>("");
 
   // Sync URL ?id= -> selection
   useEffect(() => {
