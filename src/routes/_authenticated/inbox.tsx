@@ -324,9 +324,21 @@ function OperatorDashboard() {
               </div>
               <div className="flex items-center gap-4">
                 <StatusSelect
-                  status={(selected.status as BookingStatus | null) ?? null}
+                  status={
+                    pendingCancel
+                      ? "cancelled"
+                      : ((selected.status as BookingStatus | null) ?? null)
+                  }
                   saveState={statusSaveState}
-                  onChange={(s) => statusMutation.mutate(s)}
+                  onChange={(s) => {
+                    if (s === "cancelled") {
+                      // Defer save until reason is picked
+                      setPendingCancel(true);
+                    } else {
+                      setPendingCancel(false);
+                      statusMutation.mutate({ status: s });
+                    }
+                  }}
                 />
                 <ModeToggle
                   mode={(selected.mode === "human" ? "human" : "bot") as "bot" | "human"}
@@ -335,6 +347,47 @@ function OperatorDashboard() {
                 />
               </div>
             </header>
+
+            {(pendingCancel || selected.status === "cancelled") && (
+              <CancellationReasonBar
+                reasonChoice={reasonChoice}
+                otherText={otherText}
+                onChoiceChange={setReasonChoice}
+                onOtherChange={setOtherText}
+                saving={statusSaveState === "saving"}
+                onSave={() => {
+                  const finalReason =
+                    reasonChoice === "Other" ? otherText.trim() : reasonChoice.trim();
+                  if (!finalReason) {
+                    toast.error("Please select a cancellation reason");
+                    return;
+                  }
+                  statusMutation.mutate(
+                    { status: "cancelled", cancellation_reason: finalReason },
+                    { onSuccess: () => setPendingCancel(false) },
+                  );
+                }}
+                onCancel={
+                  pendingCancel
+                    ? () => {
+                        setPendingCancel(false);
+                        // Restore reason fields from server value
+                        const serverReason = (selected.cancellation_reason ?? null) as string | null;
+                        if (serverReason && CANCELLATION_REASONS.includes(serverReason)) {
+                          setReasonChoice(serverReason);
+                          setOtherText("");
+                        } else if (serverReason) {
+                          setReasonChoice("Other");
+                          setOtherText(serverReason);
+                        } else {
+                          setReasonChoice("");
+                          setOtherText("");
+                        }
+                      }
+                    : null
+                }
+              />
+            )}
 
             <div className="flex-1 overflow-y-auto px-6 py-4">
               {messages.length === 0 ? (
