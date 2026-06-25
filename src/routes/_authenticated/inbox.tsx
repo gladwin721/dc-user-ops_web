@@ -94,7 +94,7 @@ function OperatorDashboard() {
   const listFn = useServerFn(getConversations);
   const detailFn = useServerFn(getConversation);
   const updateModeFn = useServerFn(updateConversationMode);
-  const updateStatusFn = useServerFn(updateConversationStatus);
+  const saveStatusFn = useServerFn(saveBookingStatus);
   const sendFn = useServerFn(sendOperatorMessage);
 
   const search = Route.useSearch();
