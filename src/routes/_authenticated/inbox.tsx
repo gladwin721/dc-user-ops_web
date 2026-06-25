@@ -7,7 +7,7 @@ import {
   getConversations,
   getConversation,
   updateConversationMode,
-  updateConversationStatus,
+  saveBookingStatus,
   sendOperatorMessage,
   BOOKING_STATUSES,
   type BookingStatus,
@@ -94,7 +94,7 @@ function OperatorDashboard() {
   const listFn = useServerFn(getConversations);
   const detailFn = useServerFn(getConversation);
   const updateModeFn = useServerFn(updateConversationMode);
-  const updateStatusFn = useServerFn(updateConversationStatus);
+  const saveStatusFn = useServerFn(saveBookingStatus);
   const sendFn = useServerFn(sendOperatorMessage);
 
   const search = Route.useSearch();
@@ -102,6 +102,11 @@ function OperatorDashboard() {
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | BookingStatus>("all");
   const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // Pending-cancel UX: when operator picks "Cancelled" in the dropdown, we hold off
+  // saving until they pick a reason and click Save.
+  const [pendingCancel, setPendingCancel] = useState(false);
+  const [reasonChoice, setReasonChoice] = useState<string>("");
+  const [otherText, setOtherText] = useState<string>("");
 
   // Sync URL ?id= -> selection
   useEffect(() => {
@@ -134,6 +139,42 @@ function OperatorDashboard() {
 
   const selected = detailQuery.data?.row ?? null;
   const messages = useMemo(() => parseHistory(selected?.history ?? null), [selected?.history]);
+
+  // Preload cancellation reason whenever the selected conversation (or its server-side
+  // reason / status) changes. Also resets pending-cancel UI when a different
+  // conversation is opened.
+  const lastSyncedRef = useRef<{ id: string | number | null; reason: string | null }>({
+    id: null,
+    reason: null,
+  });
+  useEffect(() => {
+    if (!selected) {
+      setPendingCancel(false);
+      setReasonChoice("");
+      setOtherText("");
+      lastSyncedRef.current = { id: null, reason: null };
+      return;
+    }
+    const serverReason = (selected.cancellation_reason ?? null) as string | null;
+    const sameRow = lastSyncedRef.current.id === selected.id;
+    if (!sameRow || lastSyncedRef.current.reason !== serverReason) {
+      lastSyncedRef.current = { id: selected.id, reason: serverReason };
+      if (serverReason && CANCELLATION_REASONS.includes(serverReason)) {
+        setReasonChoice(serverReason);
+        setOtherText("");
+      } else if (serverReason) {
+        setReasonChoice("Other");
+        setOtherText(serverReason);
+      } else {
+        setReasonChoice("");
+        setOtherText("");
+      }
+    }
+    if (!sameRow) {
+      setPendingCancel(false);
+    }
+  }, [selected]);
+
 
   const sendMutation = useMutation({
     mutationFn: async (text: string) => {
@@ -177,12 +218,18 @@ function OperatorDashboard() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: async (status: BookingStatus) => {
+    mutationFn: async (args: { status: BookingStatus; cancellation_reason?: string | null }) => {
       if (!selected) throw new Error("No conversation selected");
       setStatusSaveState("saving");
-      const res = await updateStatusFn({ data: { id: selected.id, status } });
+      const res = await saveStatusFn({
+        data: {
+          id: selected.id,
+          status: args.status,
+          cancellation_reason: args.cancellation_reason ?? null,
+        },
+      });
       if (!res.ok) throw new Error(res.error ?? "Failed to update status");
-      return status;
+      return args.status;
     },
     onSuccess: (status) => {
       setStatusSaveState("saved");
@@ -277,9 +324,21 @@ function OperatorDashboard() {
               </div>
               <div className="flex items-center gap-4">
                 <StatusSelect
-                  status={(selected.status as BookingStatus | null) ?? null}
+                  status={
+                    pendingCancel
+                      ? "cancelled"
+                      : ((selected.status as BookingStatus | null) ?? null)
+                  }
                   saveState={statusSaveState}
-                  onChange={(s) => statusMutation.mutate(s)}
+                  onChange={(s) => {
+                    if (s === "cancelled") {
+                      // Defer save until reason is picked
+                      setPendingCancel(true);
+                    } else {
+                      setPendingCancel(false);
+                      statusMutation.mutate({ status: s });
+                    }
+                  }}
                 />
                 <ModeToggle
                   mode={(selected.mode === "human" ? "human" : "bot") as "bot" | "human"}
@@ -288,6 +347,47 @@ function OperatorDashboard() {
                 />
               </div>
             </header>
+
+            {(pendingCancel || selected.status === "cancelled") && (
+              <CancellationReasonBar
+                reasonChoice={reasonChoice}
+                otherText={otherText}
+                onChoiceChange={setReasonChoice}
+                onOtherChange={setOtherText}
+                saving={statusSaveState === "saving"}
+                onSave={() => {
+                  const finalReason =
+                    reasonChoice === "Other" ? otherText.trim() : reasonChoice.trim();
+                  if (!finalReason) {
+                    toast.error("Please select a cancellation reason");
+                    return;
+                  }
+                  statusMutation.mutate(
+                    { status: "cancelled", cancellation_reason: finalReason },
+                    { onSuccess: () => setPendingCancel(false) },
+                  );
+                }}
+                onCancel={
+                  pendingCancel
+                    ? () => {
+                        setPendingCancel(false);
+                        // Restore reason fields from server value
+                        const serverReason = (selected.cancellation_reason ?? null) as string | null;
+                        if (serverReason && CANCELLATION_REASONS.includes(serverReason)) {
+                          setReasonChoice(serverReason);
+                          setOtherText("");
+                        } else if (serverReason) {
+                          setReasonChoice("Other");
+                          setOtherText(serverReason);
+                        } else {
+                          setReasonChoice("");
+                          setOtherText("");
+                        }
+                      }
+                    : null
+                }
+              />
+            )}
 
             <div className="flex-1 overflow-y-auto px-6 py-4">
               {messages.length === 0 ? (
@@ -569,6 +669,86 @@ function CustomerLocation({
           Open in Google Maps
         </a>
       </Button>
+    </div>
+  );
+}
+
+const CANCELLATION_REASONS: readonly string[] = [
+  "Customer no longer required the service",
+  "Customer unreachable",
+  "No cook available",
+  "Cook unavailable",
+  "Outside service area",
+  "Requested time unavailable",
+  "Duplicate booking",
+  "Fake / spam enquiry",
+  "Other",
+];
+
+function CancellationReasonBar({
+  reasonChoice,
+  otherText,
+  onChoiceChange,
+  onOtherChange,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  reasonChoice: string;
+  otherText: string;
+  onChoiceChange: (v: string) => void;
+  onOtherChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: (() => void) | null;
+  saving: boolean;
+}) {
+  const isOther = reasonChoice === "Other";
+  const canSave = isOther ? otherText.trim().length > 0 : reasonChoice.trim().length > 0;
+  return (
+    <div className="border-b bg-muted/30 px-6 py-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="flex min-w-[260px] flex-1 items-center gap-2">
+          <Label className="shrink-0 text-xs text-muted-foreground">
+            Cancellation Reason <span className="text-destructive">*</span>
+          </Label>
+          <Select value={reasonChoice} onValueChange={onChoiceChange} disabled={saving}>
+            <SelectTrigger className="h-8 flex-1 text-xs">
+              <SelectValue placeholder="Select a reason…" />
+            </SelectTrigger>
+            <SelectContent>
+              {CANCELLATION_REASONS.map((r) => (
+                <SelectItem key={r} value={r} className="text-xs">
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          {onCancel && (
+            <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
+              Cancel
+            </Button>
+          )}
+          <Button size="sm" onClick={onSave} disabled={!canSave || saving}>
+            {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Save
+          </Button>
+        </div>
+      </div>
+      {isOther && (
+        <div className="mt-2 space-y-1">
+          <Label className="text-xs text-muted-foreground">Please specify</Label>
+          <Textarea
+            value={otherText}
+            onChange={(e) => onOtherChange(e.target.value)}
+            placeholder="Describe the cancellation reason…"
+            rows={2}
+            disabled={saving}
+            className="resize-none text-sm"
+          />
+        </div>
+      )}
     </div>
   );
 }

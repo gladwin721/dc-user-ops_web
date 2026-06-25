@@ -27,6 +27,7 @@ export type ConversationRow = {
   history: string | null;
   location_lat: number | string | null;
   location_lng: number | string | null;
+  cancellation_reason?: string | null;
 };
 
 const GENERIC_READ_ERROR = "Unable to load conversations";
@@ -70,7 +71,23 @@ export const getConversation = createServerFn({ method: "GET" })
       console.error("[conversations] detail error:", error);
       return { row: null as ConversationRow | null, error: GENERIC_READ_ERROR };
     }
-    return { row: (row ?? null) as ConversationRow | null, error: null as string | null };
+
+    let cancellation_reason: string | null = null;
+    if (row) {
+      const { data: order, error: orderErr } = await supabase
+        .from("orders")
+        .select("cancellation_reason")
+        .eq("conversation_id", data.id)
+        .maybeSingle();
+      if (orderErr) {
+        console.error("[conversations] order lookup error:", orderErr);
+      } else if (order) {
+        cancellation_reason = (order.cancellation_reason as string | null) ?? null;
+      }
+    }
+
+    const merged = row ? ({ ...row, cancellation_reason } as ConversationRow) : null;
+    return { row: merged, error: null as string | null };
   });
 
 export const updateConversationMode = createServerFn({ method: "POST" })
@@ -130,6 +147,57 @@ export const updateConversationStatus = createServerFn({ method: "POST" })
     }
     return { ok: true, error: null as string | null };
   });
+
+
+export const saveBookingStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: {
+    id: string | number;
+    status: BookingStatus;
+    cancellation_reason?: string | null;
+  }) => {
+    if (input?.id === undefined || input?.id === null || input.id === "") {
+      throw new Error("id is required");
+    }
+    if (!BOOKING_STATUSES.includes(input?.status as BookingStatus)) {
+      throw new Error("invalid status");
+    }
+    if (input.status === "cancelled") {
+      const r = (input.cancellation_reason ?? "").trim();
+      if (!r) throw new Error("cancellation_reason is required when cancelling");
+      if (r.length > 2000) throw new Error("cancellation_reason too long");
+    }
+    return input;
+  })
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+
+    // 1. Update conversations.status — DB trigger syncs orders.status
+    const { error: statusErr } = await supabase
+      .from("conversations")
+      .update({ status: data.status })
+      .eq("id", data.id);
+    if (statusErr) {
+      console.error("[conversations] save status error:", statusErr);
+      return { ok: false, error: GENERIC_WRITE_ERROR };
+    }
+
+    // 2. If cancelled, update orders.cancellation_reason only
+    if (data.status === "cancelled") {
+      const reason = (data.cancellation_reason ?? "").trim();
+      const { error: orderErr } = await supabase
+        .from("orders")
+        .update({ cancellation_reason: reason })
+        .eq("conversation_id", data.id);
+      if (orderErr) {
+        console.error("[conversations] save cancellation reason error:", orderErr);
+        return { ok: false, error: GENERIC_WRITE_ERROR };
+      }
+    }
+
+    return { ok: true, error: null as string | null };
+  });
+
 
 export const sendOperatorMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
