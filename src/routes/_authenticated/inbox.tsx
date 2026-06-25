@@ -203,6 +203,8 @@ function OperatorDashboard() {
   const rows = statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
   const listError = listQuery.data?.error;
 
+  useTabNotifications(allRows, selectedId);
+
   return (
     <div className="flex h-[calc(100vh-3rem)] w-full overflow-hidden bg-background text-foreground">
       {/* LEFT — Queue */}
