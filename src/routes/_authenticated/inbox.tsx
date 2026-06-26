@@ -140,6 +140,35 @@ function OperatorDashboard() {
   const selected = detailQuery.data?.row ?? null;
   const messages = useMemo(() => parseHistory(selected?.history ?? null), [selected?.history]);
 
+  // Auto-scroll chat container to newest message.
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+  const handleChatScroll = () => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  };
+  // Force jump to bottom whenever a different conversation is opened.
+  useEffect(() => {
+    atBottomRef.current = true;
+    const el = chatScrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      const c = chatScrollRef.current;
+      if (c) c.scrollTop = c.scrollHeight;
+    });
+  }, [selectedId]);
+  // Stick to bottom on new messages unless the user scrolled up.
+  useEffect(() => {
+    if (!atBottomRef.current) return;
+    const el = chatScrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      const c = chatScrollRef.current;
+      if (c) c.scrollTo({ top: c.scrollHeight, behavior: "smooth" });
+    });
+  }, [messages]);
+
   // Preload cancellation reason whenever the selected conversation (or its server-side
   // reason / status) changes. Also resets pending-cancel UI when a different
   // conversation is opened.
