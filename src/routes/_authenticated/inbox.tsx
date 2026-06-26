@@ -418,7 +418,7 @@ function OperatorDashboard() {
               />
             )}
 
-            <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto px-6 py-4">
               {messages.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No messages in history yet.</div>
               ) : (
