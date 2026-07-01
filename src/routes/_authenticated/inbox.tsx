@@ -375,21 +375,27 @@ function OperatorDashboard() {
                 </p>
               </div>
               <div className="flex items-center gap-4">
-                <StatusSelect
-                  status={
+                <StatusMultiSelect
+                  statuses={
                     pendingCancel
-                      ? "cancelled"
-                      : ((selected.status as BookingStatus | null) ?? null)
+                      ? Array.from(new Set([...selectedStatuses, "cancelled"])) as BookingStatus[]
+                      : selectedStatuses
                   }
                   saveState={statusSaveState}
-                  onChange={(s) => {
-                    if (s === "cancelled") {
-                      // Defer save until reason is picked
+                  onChange={(next) => {
+                    const wasCancelled = selectedStatuses.includes("cancelled");
+                    const nowCancelled = next.includes("cancelled");
+                    if (nowCancelled && !wasCancelled) {
+                      // Defer save until reason chosen
                       setPendingCancel(true);
-                    } else {
-                      setPendingCancel(false);
-                      statusMutation.mutate({ status: s });
+                      return;
                     }
+                    setPendingCancel(false);
+                    if (next.length === 0) {
+                      toast.error("Select at least one status");
+                      return;
+                    }
+                    statusMutation.mutate({ statuses: next });
                   }}
                 />
                 <ModeToggle
@@ -400,7 +406,7 @@ function OperatorDashboard() {
               </div>
             </header>
 
-            {(pendingCancel || selected.status === "cancelled") && (
+            {showCancellationBar && (
               <CancellationReasonBar
                 reasonChoice={reasonChoice}
                 otherText={otherText}
@@ -414,8 +420,11 @@ function OperatorDashboard() {
                     toast.error("Please select a cancellation reason");
                     return;
                   }
+                  const nextStatuses = Array.from(
+                    new Set<BookingStatus>([...selectedStatuses, "cancelled"]),
+                  );
                   statusMutation.mutate(
-                    { status: "cancelled", cancellation_reason: finalReason },
+                    { statuses: nextStatuses, cancellation_reason: finalReason },
                     { onSuccess: () => setPendingCancel(false) },
                   );
                 }}
@@ -423,7 +432,6 @@ function OperatorDashboard() {
                   pendingCancel
                     ? () => {
                         setPendingCancel(false);
-                        // Restore reason fields from server value
                         const serverReason = (selected.cancellation_reason ?? null) as string | null;
                         if (serverReason && CANCELLATION_REASONS.includes(serverReason)) {
                           setReasonChoice(serverReason);
