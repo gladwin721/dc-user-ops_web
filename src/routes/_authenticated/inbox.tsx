@@ -289,8 +289,18 @@ function OperatorDashboard() {
   });
 
   const allRows = listQuery.data?.rows ?? [];
-  const rows = statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
+  const rows =
+    statusFilter === "all"
+      ? allRows
+      : allRows.filter((r) => parseStatuses(r.status).includes(statusFilter));
   const listError = listQuery.data?.error;
+
+  // Current server-side selected statuses
+  const selectedStatuses: BookingStatus[] = useMemo(
+    () => parseStatuses(selected?.status ?? null),
+    [selected?.status],
+  );
+  const showCancellationBar = pendingCancel || selectedStatuses.includes("cancelled");
 
   useTabNotifications(allRows, selectedId);
 
