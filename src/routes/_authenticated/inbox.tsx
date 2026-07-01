@@ -483,20 +483,25 @@ function OperatorDashboard() {
           {!selected ? (
             <p className="text-sm text-muted-foreground">No conversation selected.</p>
           ) : (
-            <div className="space-y-5">
-              <dl className="space-y-3 text-sm">
-                <DetailRow icon={<MapPin className="h-4 w-4" />} label="Area" value={selected.area} />
-                <DetailRow icon={<Calendar className="h-4 w-4" />} label="Date" value={selected.booking_date} />
-                <DetailRow icon={<Clock className="h-4 w-4" />} label="Time" value={selected.booking_time} />
-                <DetailRow icon={<Users className="h-4 w-4" />} label="People" value={selected.people != null ? String(selected.people) : null} />
-                <DetailRow icon={<MessageSquare className="h-4 w-4" />} label="Status" value={selected.status} />
-                <DetailRow icon={<Bot className="h-4 w-4" />} label="Mode" value={selected.mode} />
-                <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={selected.phone} />
-              </dl>
-              <CustomerLocation lat={selected.location_lat} lng={selected.location_lng} />
-            </div>
-
-
+            <BookingDetailsPanel
+              key={String(selected.id)}
+              row={selected}
+              onSaveFields={(fields) =>
+                updateFieldsFn({ data: { id: selected.id, fields } }).then((res) => {
+                  if (!res.ok) throw new Error(res.error ?? "Save failed");
+                  qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+                  qc.invalidateQueries({ queryKey: ["conversations"] });
+                })
+              }
+              onSaveCook={(cook_assigned) =>
+                updateCookFn({
+                  data: { conversation_id: selected.id, cook_assigned },
+                }).then((res) => {
+                  if (!res.ok) throw new Error(res.error ?? "Save failed");
+                  qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+                })
+              }
+            />
           )}
         </div>
       </aside>
