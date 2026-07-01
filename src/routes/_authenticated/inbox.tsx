@@ -108,6 +108,8 @@ function OperatorDashboard() {
   const updateModeFn = useServerFn(updateConversationMode);
   const saveStatusFn = useServerFn(saveBookingStatus);
   const sendFn = useServerFn(sendOperatorMessage);
+  const updateFieldsFn = useServerFn(updateConversationFields);
+  const updateCookFn = useServerFn(updateOrderCookAssigned);
 
   const search = Route.useSearch();
   const [selectedId, setSelectedId] = useState<string | number | null>(search.id ?? null);
