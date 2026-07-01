@@ -7,8 +7,11 @@ import {
   getConversations,
   getConversation,
   updateConversationMode,
+  updateConversationFields,
+  updateOrderCookAssigned,
   saveBookingStatus,
   sendOperatorMessage,
+  parseStatuses,
   BOOKING_STATUSES,
   type BookingStatus,
   type ConversationRow,
@@ -18,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -25,7 +29,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check, ExternalLink } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check, ExternalLink, ChevronDown, ChefHat, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
@@ -96,6 +108,8 @@ function OperatorDashboard() {
   const updateModeFn = useServerFn(updateConversationMode);
   const saveStatusFn = useServerFn(saveBookingStatus);
   const sendFn = useServerFn(sendOperatorMessage);
+  const updateFieldsFn = useServerFn(updateConversationFields);
+  const updateCookFn = useServerFn(updateOrderCookAssigned);
 
   const search = Route.useSearch();
   const [selectedId, setSelectedId] = useState<string | number | null>(search.id ?? null);
@@ -247,22 +261,23 @@ function OperatorDashboard() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: async (args: { status: BookingStatus; cancellation_reason?: string | null }) => {
+    mutationFn: async (args: { statuses: BookingStatus[]; cancellation_reason?: string | null }) => {
       if (!selected) throw new Error("No conversation selected");
       setStatusSaveState("saving");
       const res = await saveStatusFn({
         data: {
           id: selected.id,
-          status: args.status,
+          statuses: args.statuses,
           cancellation_reason: args.cancellation_reason ?? null,
         },
       });
       if (!res.ok) throw new Error(res.error ?? "Failed to update status");
-      return args.status;
+      return args.statuses;
     },
-    onSuccess: (status) => {
+    onSuccess: (statuses) => {
       setStatusSaveState("saved");
-      toast.success(`Status set to ${STATUS_META[status].label}`);
+      const labels = statuses.map((s) => STATUS_META[s].label).join(", ");
+      toast.success(`Status set to ${labels}`);
       qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       setTimeout(() => setStatusSaveState("idle"), 1500);
@@ -276,8 +291,18 @@ function OperatorDashboard() {
   });
 
   const allRows = listQuery.data?.rows ?? [];
-  const rows = statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
+  const rows =
+    statusFilter === "all"
+      ? allRows
+      : allRows.filter((r) => parseStatuses(r.status).includes(statusFilter));
   const listError = listQuery.data?.error;
+
+  // Current server-side selected statuses
+  const selectedStatuses: BookingStatus[] = useMemo(
+    () => parseStatuses(selected?.status ?? null),
+    [selected?.status],
+  );
+  const showCancellationBar = pendingCancel || selectedStatuses.includes("cancelled");
 
   useTabNotifications(allRows, selectedId);
 
@@ -352,21 +377,27 @@ function OperatorDashboard() {
                 </p>
               </div>
               <div className="flex items-center gap-4">
-                <StatusSelect
-                  status={
+                <StatusMultiSelect
+                  statuses={
                     pendingCancel
-                      ? "cancelled"
-                      : ((selected.status as BookingStatus | null) ?? null)
+                      ? Array.from(new Set([...selectedStatuses, "cancelled"])) as BookingStatus[]
+                      : selectedStatuses
                   }
                   saveState={statusSaveState}
-                  onChange={(s) => {
-                    if (s === "cancelled") {
-                      // Defer save until reason is picked
+                  onChange={(next) => {
+                    const wasCancelled = selectedStatuses.includes("cancelled");
+                    const nowCancelled = next.includes("cancelled");
+                    if (nowCancelled && !wasCancelled) {
+                      // Defer save until reason chosen
                       setPendingCancel(true);
-                    } else {
-                      setPendingCancel(false);
-                      statusMutation.mutate({ status: s });
+                      return;
                     }
+                    setPendingCancel(false);
+                    if (next.length === 0) {
+                      toast.error("Select at least one status");
+                      return;
+                    }
+                    statusMutation.mutate({ statuses: next });
                   }}
                 />
                 <ModeToggle
@@ -377,7 +408,7 @@ function OperatorDashboard() {
               </div>
             </header>
 
-            {(pendingCancel || selected.status === "cancelled") && (
+            {showCancellationBar && (
               <CancellationReasonBar
                 reasonChoice={reasonChoice}
                 otherText={otherText}
@@ -391,8 +422,11 @@ function OperatorDashboard() {
                     toast.error("Please select a cancellation reason");
                     return;
                   }
+                  const nextStatuses = Array.from(
+                    new Set<BookingStatus>([...selectedStatuses, "cancelled"]),
+                  );
                   statusMutation.mutate(
-                    { status: "cancelled", cancellation_reason: finalReason },
+                    { statuses: nextStatuses, cancellation_reason: finalReason },
                     { onSuccess: () => setPendingCancel(false) },
                   );
                 }}
@@ -400,7 +434,6 @@ function OperatorDashboard() {
                   pendingCancel
                     ? () => {
                         setPendingCancel(false);
-                        // Restore reason fields from server value
                         const serverReason = (selected.cancellation_reason ?? null) as string | null;
                         if (serverReason && CANCELLATION_REASONS.includes(serverReason)) {
                           setReasonChoice(serverReason);
@@ -450,20 +483,25 @@ function OperatorDashboard() {
           {!selected ? (
             <p className="text-sm text-muted-foreground">No conversation selected.</p>
           ) : (
-            <div className="space-y-5">
-              <dl className="space-y-3 text-sm">
-                <DetailRow icon={<MapPin className="h-4 w-4" />} label="Area" value={selected.area} />
-                <DetailRow icon={<Calendar className="h-4 w-4" />} label="Date" value={selected.booking_date} />
-                <DetailRow icon={<Clock className="h-4 w-4" />} label="Time" value={selected.booking_time} />
-                <DetailRow icon={<Users className="h-4 w-4" />} label="People" value={selected.people != null ? String(selected.people) : null} />
-                <DetailRow icon={<MessageSquare className="h-4 w-4" />} label="Status" value={selected.status} />
-                <DetailRow icon={<Bot className="h-4 w-4" />} label="Mode" value={selected.mode} />
-                <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={selected.phone} />
-              </dl>
-              <CustomerLocation lat={selected.location_lat} lng={selected.location_lng} />
-            </div>
-
-
+            <BookingDetailsPanel
+              key={String(selected.id)}
+              row={selected}
+              onSaveFields={(fields) =>
+                updateFieldsFn({ data: { id: selected.id, fields } }).then((res) => {
+                  if (!res.ok) throw new Error(res.error ?? "Save failed");
+                  qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+                  qc.invalidateQueries({ queryKey: ["conversations"] });
+                })
+              }
+              onSaveCook={(cook_assigned) =>
+                updateCookFn({
+                  data: { conversation_id: selected.id, cook_assigned },
+                }).then((res) => {
+                  if (!res.ok) throw new Error(res.error ?? "Save failed");
+                  qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+                })
+              }
+            />
           )}
         </div>
       </aside>
@@ -493,8 +531,8 @@ function ConversationListItem({
           <span className="truncate text-sm font-medium">{row.phone ?? "Unknown"}</span>
           <ModeBadge mode={row.mode} small />
         </div>
-        <div>
-          <StatusBadge status={row.status} small />
+        <div className="flex flex-wrap gap-1">
+          <StatusBadges status={row.status} small />
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <MapPin className="h-3 w-3" />
@@ -823,7 +861,7 @@ function isBookingStatus(v: string | null | undefined): v is BookingStatus {
   return !!v && (BOOKING_STATUSES as readonly string[]).includes(v);
 }
 
-function StatusBadge({ status, small }: { status: string | null; small?: boolean }) {
+function StatusBadge({ status, small }: { status: BookingStatus | string | null; small?: boolean }) {
   if (!isBookingStatus(status)) {
     return (
       <Badge variant="outline" className={cn(small && "px-1.5 py-0 text-[10px]")}>
@@ -840,38 +878,79 @@ function StatusBadge({ status, small }: { status: string | null; small?: boolean
   );
 }
 
-function StatusSelect({
-  status,
+function StatusBadges({ status, small }: { status: string | null; small?: boolean }) {
+  const list = parseStatuses(status);
+  if (list.length === 0) {
+    return (
+      <Badge variant="outline" className={cn(small && "px-1.5 py-0 text-[10px]")}>
+        {status ?? "—"}
+      </Badge>
+    );
+  }
+  return (
+    <>
+      {list.map((s) => (
+        <StatusBadge key={s} status={s} small={small} />
+      ))}
+    </>
+  );
+}
+
+function StatusMultiSelect({
+  statuses,
   saveState,
   onChange,
 }: {
-  status: BookingStatus | null;
+  statuses: BookingStatus[];
   saveState: "idle" | "saving" | "saved" | "error";
-  onChange: (s: BookingStatus) => void;
+  onChange: (s: BookingStatus[]) => void;
 }) {
-  const value = isBookingStatus(status) ? status : "new";
+  const summary =
+    statuses.length === 0
+      ? "Select status"
+      : statuses.length === 1
+        ? STATUS_META[statuses[0]].label
+        : `${statuses.length} selected`;
+  const set = new Set(statuses);
   return (
     <div className="flex items-center gap-2">
       <Label className="text-xs text-muted-foreground">Status</Label>
-      <Select
-        value={value}
-        disabled={saveState === "saving"}
-        onValueChange={(v) => onChange(v as BookingStatus)}
-      >
-        <SelectTrigger className="h-8 w-[180px] text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild disabled={saveState === "saving"}>
+          <Button variant="outline" size="sm" className="h-8 w-[220px] justify-between text-xs font-normal">
+            <span className="flex items-center gap-1.5 truncate">
+              {statuses.length > 0 && (
+                <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[statuses[0]].dotClass)} />
+              )}
+              <span className="truncate">{summary}</span>
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel className="text-xs">Statuses</DropdownMenuLabel>
+          <DropdownMenuSeparator />
           {BOOKING_STATUSES.map((s) => (
-            <SelectItem key={s} value={s}>
-              <span className="flex items-center gap-2">
+            <DropdownMenuCheckboxItem
+              key={s}
+              checked={set.has(s)}
+              onCheckedChange={(checked) => {
+                const next = new Set(statuses);
+                if (checked) next.add(s);
+                else next.delete(s);
+                const ordered = (BOOKING_STATUSES as readonly BookingStatus[]).filter((x) => next.has(x));
+                onChange(ordered);
+              }}
+              onSelect={(e) => e.preventDefault()}
+            >
+              <span className="flex items-center gap-2 text-xs">
                 <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[s].dotClass)} />
                 {STATUS_META[s].label}
               </span>
-            </SelectItem>
+            </DropdownMenuCheckboxItem>
           ))}
-        </SelectContent>
-      </Select>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <span className="w-4 text-muted-foreground">
         {saveState === "saving" && <Loader2 className="h-4 w-4 animate-spin" />}
         {saveState === "saved" && <Check className="h-4 w-4 text-green-600" />}
@@ -879,6 +958,196 @@ function StatusSelect({
     </div>
   );
 }
+
+// ---------- Booking details panel (editable) ----------
+
+function BookingDetailsPanel({
+  row,
+  onSaveFields,
+  onSaveCook,
+}: {
+  row: ConversationRow;
+  onSaveFields: (fields: Record<string, string | number | null>) => Promise<void>;
+  onSaveCook: (cook_assigned: string | null) => Promise<void>;
+}) {
+  const [area, setArea] = useState(row.area ?? "");
+  const [date, setDate] = useState(row.booking_date ?? "");
+  const [time, setTime] = useState(row.booking_time ?? "");
+  const [people, setPeople] = useState(row.people != null ? String(row.people) : "");
+  const [cook, setCook] = useState(row.cook_assigned ?? "");
+  const [subEnq, setSubEnq] = useState(row.subscription_enquiry ?? "");
+
+  // Sync when incoming row changes (polling)
+  useEffect(() => {
+    setArea(row.area ?? "");
+    setDate(row.booking_date ?? "");
+    setTime(row.booking_time ?? "");
+    setPeople(row.people != null ? String(row.people) : "");
+    setCook(row.cook_assigned ?? "");
+    setSubEnq(row.subscription_enquiry ?? "");
+  }, [row.id]);
+
+  async function saveField(field: string, value: string, original: string) {
+    if (value === original) return;
+    try {
+      await onSaveFields({ [field]: value === "" ? null : value });
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+  async function savePeople() {
+    const original = row.people != null ? String(row.people) : "";
+    if (people === original) return;
+    try {
+      const val = people.trim() === "" ? null : Number(people);
+      if (val !== null && Number.isNaN(val)) {
+        toast.error("People must be a number");
+        return;
+      }
+      await onSaveFields({ people: val });
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+  async function saveCookField() {
+    const original = row.cook_assigned ?? "";
+    if (cook === original) return;
+    try {
+      await onSaveCook(cook.trim() === "" ? null : cook.trim());
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+  async function saveSubEnqField() {
+    await saveField("subscription_enquiry", subEnq, row.subscription_enquiry ?? "");
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-3">
+        <EditableField
+          icon={<MapPin className="h-4 w-4" />}
+          label="Area"
+          value={area}
+          onChange={setArea}
+          onCommit={() => saveField("area", area, row.area ?? "")}
+          placeholder="e.g. HSR Layout"
+        />
+        <EditableField
+          icon={<Calendar className="h-4 w-4" />}
+          label="Date"
+          type="date"
+          value={date}
+          onChange={setDate}
+          onCommit={() => saveField("booking_date", date, row.booking_date ?? "")}
+        />
+        <EditableField
+          icon={<Clock className="h-4 w-4" />}
+          label="Time"
+          type="time"
+          value={time}
+          onChange={setTime}
+          onCommit={() => saveField("booking_time", time, row.booking_time ?? "")}
+        />
+        <EditableField
+          icon={<Users className="h-4 w-4" />}
+          label="People"
+          type="number"
+          value={people}
+          onChange={setPeople}
+          onCommit={savePeople}
+          placeholder="0"
+        />
+        <EditableField
+          icon={<ChefHat className="h-4 w-4" />}
+          label="Cook Assigned"
+          value={cook}
+          onChange={setCook}
+          onCommit={saveCookField}
+          placeholder="Assign a cook"
+        />
+        <EditableField
+          icon={<Repeat className="h-4 w-4" />}
+          label="Subscription Enquiry"
+          value={subEnq}
+          onChange={setSubEnq}
+          onCommit={saveSubEnqField}
+          placeholder="Details of subscription enquiry"
+          multiline
+        />
+      </div>
+
+      <dl className="space-y-3 border-t pt-4 text-sm">
+        <DetailRow icon={<MessageSquare className="h-4 w-4" />} label="Status" value={row.status} />
+        <DetailRow icon={<Bot className="h-4 w-4" />} label="Mode" value={row.mode} />
+        <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={row.phone} />
+      </dl>
+
+      <CustomerLocation lat={row.location_lat} lng={row.location_lng} />
+    </div>
+  );
+}
+
+function EditableField({
+  icon,
+  label,
+  value,
+  onChange,
+  onCommit,
+  type = "text",
+  placeholder,
+  multiline,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  onCommit: () => void | Promise<void>;
+  type?: string;
+  placeholder?: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {icon}
+        {label}
+      </Label>
+      {multiline ? (
+        <Textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={() => onCommit()}
+          placeholder={placeholder}
+          rows={2}
+          className="resize-none text-sm"
+        />
+      ) : (
+        <Input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={() => onCommit()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          placeholder={placeholder}
+          className="h-8 text-sm"
+        />
+      )}
+    </div>
+  );
+}
+
 
 // ---------- Tab notifications ----------
 
