@@ -259,22 +259,23 @@ function OperatorDashboard() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: async (args: { status: BookingStatus; cancellation_reason?: string | null }) => {
+    mutationFn: async (args: { statuses: BookingStatus[]; cancellation_reason?: string | null }) => {
       if (!selected) throw new Error("No conversation selected");
       setStatusSaveState("saving");
       const res = await saveStatusFn({
         data: {
           id: selected.id,
-          status: args.status,
+          statuses: args.statuses,
           cancellation_reason: args.cancellation_reason ?? null,
         },
       });
       if (!res.ok) throw new Error(res.error ?? "Failed to update status");
-      return args.status;
+      return args.statuses;
     },
-    onSuccess: (status) => {
+    onSuccess: (statuses) => {
       setStatusSaveState("saved");
-      toast.success(`Status set to ${STATUS_META[status].label}`);
+      const labels = statuses.map((s) => STATUS_META[s].label).join(", ");
+      toast.success(`Status set to ${labels}`);
       qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       setTimeout(() => setStatusSaveState("idle"), 1500);
