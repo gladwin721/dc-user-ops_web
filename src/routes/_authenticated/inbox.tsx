@@ -531,8 +531,8 @@ function ConversationListItem({
           <span className="truncate text-sm font-medium">{row.phone ?? "Unknown"}</span>
           <ModeBadge mode={row.mode} small />
         </div>
-        <div>
-          <StatusBadge status={row.status} small />
+        <div className="flex flex-wrap gap-1">
+          <StatusBadges status={row.status} small />
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <MapPin className="h-3 w-3" />
