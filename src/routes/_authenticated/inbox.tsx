@@ -861,7 +861,7 @@ function isBookingStatus(v: string | null | undefined): v is BookingStatus {
   return !!v && (BOOKING_STATUSES as readonly string[]).includes(v);
 }
 
-function StatusBadge({ status, small }: { status: string | null; small?: boolean }) {
+function StatusBadge({ status, small }: { status: BookingStatus | string | null; small?: boolean }) {
   if (!isBookingStatus(status)) {
     return (
       <Badge variant="outline" className={cn(small && "px-1.5 py-0 text-[10px]")}>
@@ -878,38 +878,79 @@ function StatusBadge({ status, small }: { status: string | null; small?: boolean
   );
 }
 
-function StatusSelect({
-  status,
+function StatusBadges({ status, small }: { status: string | null; small?: boolean }) {
+  const list = parseStatuses(status);
+  if (list.length === 0) {
+    return (
+      <Badge variant="outline" className={cn(small && "px-1.5 py-0 text-[10px]")}>
+        {status ?? "—"}
+      </Badge>
+    );
+  }
+  return (
+    <>
+      {list.map((s) => (
+        <StatusBadge key={s} status={s} small={small} />
+      ))}
+    </>
+  );
+}
+
+function StatusMultiSelect({
+  statuses,
   saveState,
   onChange,
 }: {
-  status: BookingStatus | null;
+  statuses: BookingStatus[];
   saveState: "idle" | "saving" | "saved" | "error";
-  onChange: (s: BookingStatus) => void;
+  onChange: (s: BookingStatus[]) => void;
 }) {
-  const value = isBookingStatus(status) ? status : "new";
+  const summary =
+    statuses.length === 0
+      ? "Select status"
+      : statuses.length === 1
+        ? STATUS_META[statuses[0]].label
+        : `${statuses.length} selected`;
+  const set = new Set(statuses);
   return (
     <div className="flex items-center gap-2">
       <Label className="text-xs text-muted-foreground">Status</Label>
-      <Select
-        value={value}
-        disabled={saveState === "saving"}
-        onValueChange={(v) => onChange(v as BookingStatus)}
-      >
-        <SelectTrigger className="h-8 w-[180px] text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild disabled={saveState === "saving"}>
+          <Button variant="outline" size="sm" className="h-8 w-[220px] justify-between text-xs font-normal">
+            <span className="flex items-center gap-1.5 truncate">
+              {statuses.length > 0 && (
+                <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[statuses[0]].dotClass)} />
+              )}
+              <span className="truncate">{summary}</span>
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel className="text-xs">Statuses</DropdownMenuLabel>
+          <DropdownMenuSeparator />
           {BOOKING_STATUSES.map((s) => (
-            <SelectItem key={s} value={s}>
-              <span className="flex items-center gap-2">
+            <DropdownMenuCheckboxItem
+              key={s}
+              checked={set.has(s)}
+              onCheckedChange={(checked) => {
+                const next = new Set(statuses);
+                if (checked) next.add(s);
+                else next.delete(s);
+                const ordered = (BOOKING_STATUSES as readonly BookingStatus[]).filter((x) => next.has(x));
+                onChange(ordered);
+              }}
+              onSelect={(e) => e.preventDefault()}
+            >
+              <span className="flex items-center gap-2 text-xs">
                 <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[s].dotClass)} />
                 {STATUS_META[s].label}
               </span>
-            </SelectItem>
+            </DropdownMenuCheckboxItem>
           ))}
-        </SelectContent>
-      </Select>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <span className="w-4 text-muted-foreground">
         {saveState === "saving" && <Loader2 className="h-4 w-4 animate-spin" />}
         {saveState === "saved" && <Check className="h-4 w-4 text-green-600" />}
@@ -917,6 +958,196 @@ function StatusSelect({
     </div>
   );
 }
+
+// ---------- Booking details panel (editable) ----------
+
+function BookingDetailsPanel({
+  row,
+  onSaveFields,
+  onSaveCook,
+}: {
+  row: ConversationRow;
+  onSaveFields: (fields: Record<string, string | number | null>) => Promise<void>;
+  onSaveCook: (cook_assigned: string | null) => Promise<void>;
+}) {
+  const [area, setArea] = useState(row.area ?? "");
+  const [date, setDate] = useState(row.booking_date ?? "");
+  const [time, setTime] = useState(row.booking_time ?? "");
+  const [people, setPeople] = useState(row.people != null ? String(row.people) : "");
+  const [cook, setCook] = useState(row.cook_assigned ?? "");
+  const [subEnq, setSubEnq] = useState(row.subscription_enquiry ?? "");
+
+  // Sync when incoming row changes (polling)
+  useEffect(() => {
+    setArea(row.area ?? "");
+    setDate(row.booking_date ?? "");
+    setTime(row.booking_time ?? "");
+    setPeople(row.people != null ? String(row.people) : "");
+    setCook(row.cook_assigned ?? "");
+    setSubEnq(row.subscription_enquiry ?? "");
+  }, [row.id]);
+
+  async function saveField(field: string, value: string, original: string) {
+    if (value === original) return;
+    try {
+      await onSaveFields({ [field]: value === "" ? null : value });
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+  async function savePeople() {
+    const original = row.people != null ? String(row.people) : "";
+    if (people === original) return;
+    try {
+      const val = people.trim() === "" ? null : Number(people);
+      if (val !== null && Number.isNaN(val)) {
+        toast.error("People must be a number");
+        return;
+      }
+      await onSaveFields({ people: val });
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+  async function saveCookField() {
+    const original = row.cook_assigned ?? "";
+    if (cook === original) return;
+    try {
+      await onSaveCook(cook.trim() === "" ? null : cook.trim());
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+  async function saveSubEnqField() {
+    await saveField("subscription_enquiry", subEnq, row.subscription_enquiry ?? "");
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-3">
+        <EditableField
+          icon={<MapPin className="h-4 w-4" />}
+          label="Area"
+          value={area}
+          onChange={setArea}
+          onCommit={() => saveField("area", area, row.area ?? "")}
+          placeholder="e.g. HSR Layout"
+        />
+        <EditableField
+          icon={<Calendar className="h-4 w-4" />}
+          label="Date"
+          type="date"
+          value={date}
+          onChange={setDate}
+          onCommit={() => saveField("booking_date", date, row.booking_date ?? "")}
+        />
+        <EditableField
+          icon={<Clock className="h-4 w-4" />}
+          label="Time"
+          type="time"
+          value={time}
+          onChange={setTime}
+          onCommit={() => saveField("booking_time", time, row.booking_time ?? "")}
+        />
+        <EditableField
+          icon={<Users className="h-4 w-4" />}
+          label="People"
+          type="number"
+          value={people}
+          onChange={setPeople}
+          onCommit={savePeople}
+          placeholder="0"
+        />
+        <EditableField
+          icon={<ChefHat className="h-4 w-4" />}
+          label="Cook Assigned"
+          value={cook}
+          onChange={setCook}
+          onCommit={saveCookField}
+          placeholder="Assign a cook"
+        />
+        <EditableField
+          icon={<Repeat className="h-4 w-4" />}
+          label="Subscription Enquiry"
+          value={subEnq}
+          onChange={setSubEnq}
+          onCommit={saveSubEnqField}
+          placeholder="Details of subscription enquiry"
+          multiline
+        />
+      </div>
+
+      <dl className="space-y-3 border-t pt-4 text-sm">
+        <DetailRow icon={<MessageSquare className="h-4 w-4" />} label="Status" value={row.status} />
+        <DetailRow icon={<Bot className="h-4 w-4" />} label="Mode" value={row.mode} />
+        <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={row.phone} />
+      </dl>
+
+      <CustomerLocation lat={row.location_lat} lng={row.location_lng} />
+    </div>
+  );
+}
+
+function EditableField({
+  icon,
+  label,
+  value,
+  onChange,
+  onCommit,
+  type = "text",
+  placeholder,
+  multiline,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  onCommit: () => void | Promise<void>;
+  type?: string;
+  placeholder?: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {icon}
+        {label}
+      </Label>
+      {multiline ? (
+        <Textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={() => onCommit()}
+          placeholder={placeholder}
+          rows={2}
+          className="resize-none text-sm"
+        />
+      ) : (
+        <Input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={() => onCommit()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          placeholder={placeholder}
+          className="h-8 text-sm"
+        />
+      )}
+    </div>
+  );
+}
+
 
 // ---------- Tab notifications ----------
 
