@@ -28,6 +28,8 @@ export type ConversationRow = {
   location_lat: number | string | null;
   location_lng: number | string | null;
   cancellation_reason?: string | null;
+  cook_assigned?: string | null;
+  subscription_enquiry?: string | null;
 };
 
 const GENERIC_READ_ERROR = "Unable to load conversations";
@@ -63,7 +65,7 @@ export const getConversation = createServerFn({ method: "GET" })
     const supabase = await getSupabase();
     const { data: row, error } = await supabase
       .from("conversations")
-      .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, history, location_lat, location_lng")
+      .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, history, location_lat, location_lng, subscription_enquiry")
       .eq("id", data.id)
       .maybeSingle();
 
@@ -73,20 +75,24 @@ export const getConversation = createServerFn({ method: "GET" })
     }
 
     let cancellation_reason: string | null = null;
+    let cook_assigned: string | null = null;
     if (row) {
       const { data: order, error: orderErr } = await supabase
         .from("orders")
-        .select("cancellation_reason")
+        .select("cancellation_reason, cook_assigned")
         .eq("conversation_id", data.id)
         .maybeSingle();
       if (orderErr) {
         console.error("[conversations] order lookup error:", orderErr);
       } else if (order) {
         cancellation_reason = (order.cancellation_reason as string | null) ?? null;
+        cook_assigned = (order.cook_assigned as string | null) ?? null;
       }
     }
 
-    const merged = row ? ({ ...row, cancellation_reason } as ConversationRow) : null;
+    const merged = row
+      ? ({ ...row, cancellation_reason, cook_assigned } as ConversationRow)
+      : null;
     return { row: merged, error: null as string | null };
   });
 
@@ -124,6 +130,76 @@ export const BOOKING_STATUSES = [
 ] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
+// Editable booking fields on the conversations table
+const EDITABLE_FIELDS = ["area", "booking_date", "booking_time", "people", "subscription_enquiry"] as const;
+type EditableField = (typeof EDITABLE_FIELDS)[number];
+
+export const updateConversationFields = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: {
+    id: string | number;
+    fields: Partial<Record<EditableField, string | number | null>>;
+  }) => {
+    if (input?.id === undefined || input?.id === null || input.id === "") {
+      throw new Error("id is required");
+    }
+    if (!input.fields || typeof input.fields !== "object") {
+      throw new Error("fields is required");
+    }
+    const cleaned: Partial<Record<EditableField, string | number | null>> = {};
+    for (const key of Object.keys(input.fields) as EditableField[]) {
+      if (!EDITABLE_FIELDS.includes(key)) continue;
+      let val = input.fields[key];
+      if (typeof val === "string") {
+        const trimmed = val.trim();
+        val = trimmed === "" ? null : trimmed;
+      }
+      if (key === "people" && val != null && val !== "") {
+        const n = typeof val === "number" ? val : Number(val);
+        if (Number.isNaN(n)) throw new Error("people must be a number");
+        val = n;
+      }
+      cleaned[key] = val as string | number | null;
+    }
+    if (Object.keys(cleaned).length === 0) throw new Error("no fields to update");
+    return { id: input.id, fields: cleaned };
+  })
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+    const { error } = await supabase
+      .from("conversations")
+      .update(data.fields)
+      .eq("id", data.id);
+    if (error) {
+      console.error("[conversations] update fields error:", error);
+      return { ok: false, error: GENERIC_WRITE_ERROR };
+    }
+    return { ok: true, error: null as string | null };
+  });
+
+export const updateOrderCookAssigned = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { conversation_id: string | number; cook_assigned: string | null }) => {
+    if (input?.conversation_id === undefined || input?.conversation_id === null || input.conversation_id === "") {
+      throw new Error("conversation_id is required");
+    }
+    const val = typeof input.cook_assigned === "string" ? input.cook_assigned.trim() : input.cook_assigned;
+    return { conversation_id: input.conversation_id, cook_assigned: val === "" ? null : (val as string | null) };
+  })
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+    const { error } = await supabase
+      .from("orders")
+      .update({ cook_assigned: data.cook_assigned })
+      .eq("conversation_id", data.conversation_id);
+    if (error) {
+      console.error("[conversations] update cook_assigned error:", error);
+      return { ok: false, error: GENERIC_WRITE_ERROR };
+    }
+    return { ok: true, error: null as string | null };
+  });
+
+// Deprecated single-status writer kept for compatibility.
 export const updateConversationStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string | number; status: BookingStatus }) => {
@@ -148,42 +224,56 @@ export const updateConversationStatus = createServerFn({ method: "POST" })
     return { ok: true, error: null as string | null };
   });
 
+export function parseStatuses(value: string | null | undefined): BookingStatus[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is BookingStatus => (BOOKING_STATUSES as readonly string[]).includes(s));
+}
 
 export const saveBookingStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: {
     id: string | number;
-    status: BookingStatus;
+    statuses: BookingStatus[];
     cancellation_reason?: string | null;
   }) => {
     if (input?.id === undefined || input?.id === null || input.id === "") {
       throw new Error("id is required");
     }
-    if (!BOOKING_STATUSES.includes(input?.status as BookingStatus)) {
-      throw new Error("invalid status");
+    if (!Array.isArray(input?.statuses) || input.statuses.length === 0) {
+      throw new Error("statuses must be a non-empty array");
     }
-    if (input.status === "cancelled") {
+    const seen = new Set<BookingStatus>();
+    for (const s of input.statuses) {
+      if (!BOOKING_STATUSES.includes(s)) throw new Error(`invalid status: ${s}`);
+      seen.add(s);
+    }
+    const statuses = Array.from(seen);
+    if (statuses.includes("cancelled")) {
       const r = (input.cancellation_reason ?? "").trim();
       if (!r) throw new Error("cancellation_reason is required when cancelling");
       if (r.length > 2000) throw new Error("cancellation_reason too long");
     }
-    return input;
+    return { id: input.id, statuses, cancellation_reason: input.cancellation_reason ?? null };
   })
   .handler(async ({ data }) => {
     const supabase = await getSupabase();
+    // Preserve BOOKING_STATUSES order for stable storage
+    const ordered = (BOOKING_STATUSES as readonly BookingStatus[]).filter((s) => data.statuses.includes(s));
+    const serialized = ordered.join(",");
 
-    // 1. Update conversations.status — DB trigger syncs orders.status
     const { error: statusErr } = await supabase
       .from("conversations")
-      .update({ status: data.status })
+      .update({ status: serialized })
       .eq("id", data.id);
     if (statusErr) {
       console.error("[conversations] save status error:", statusErr);
       return { ok: false, error: GENERIC_WRITE_ERROR };
     }
 
-    // 2. If cancelled, update orders.cancellation_reason only
-    if (data.status === "cancelled") {
+    if (ordered.includes("cancelled")) {
       const reason = (data.cancellation_reason ?? "").trim();
       const { error: orderErr } = await supabase
         .from("orders")
