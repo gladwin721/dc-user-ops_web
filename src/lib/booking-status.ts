@@ -52,6 +52,12 @@ export const STATUS_META: Record<
     dotClass: "bg-purple-500",
     calendarClass: "bg-purple-100 text-purple-900 border-purple-300 dark:bg-purple-500/20 dark:text-purple-200 dark:border-purple-500/40",
   },
+  archived: {
+    label: "Archived",
+    badgeClass: "bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-500/40",
+    dotClass: "bg-slate-500",
+    calendarClass: "bg-slate-100 text-slate-900 border-slate-300 dark:bg-slate-500/20 dark:text-slate-200 dark:border-slate-500/40",
+  },
 };
 
 export function isBookingStatus(v: string | null | undefined): v is BookingStatus {
