@@ -455,11 +455,8 @@ function OperatorDashboard() {
                     toast.error("Please select a cancellation reason");
                     return;
                   }
-                  const nextStatuses = Array.from(
-                    new Set<BookingStatus>([...selectedStatuses, "cancelled"]),
-                  );
                   statusMutation.mutate(
-                    { statuses: nextStatuses, cancellation_reason: finalReason },
+                    { statuses: ["cancelled"], cancellation_reason: finalReason },
                     { onSuccess: () => setPendingCancel(false) },
                   );
                 }}
