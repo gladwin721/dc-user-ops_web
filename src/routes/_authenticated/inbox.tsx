@@ -744,10 +744,8 @@ const CANCELLATION_REASONS: readonly string[] = [
   "Customer no longer required the service",
   "Customer unreachable",
   "No cook available",
-  "Cook unavailable",
   "Outside service area",
   "Requested time unavailable",
-  "Duplicate booking",
   "Fake / spam enquiry",
   "Other",
 ];
