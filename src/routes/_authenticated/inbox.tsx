@@ -114,7 +114,7 @@ function OperatorDashboard() {
   const search = Route.useSearch();
   const [selectedId, setSelectedId] = useState<string | number | null>(search.id ?? null);
   const [draft, setDraft] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | BookingStatus>("all");
+  const [statusFilter, setStatusFilter] = useState<BookingStatus[]>([]);
   const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   // Pending-cancel UX: when operator picks "Cancelled" in the dropdown, we hold off
   // saving until they pick a reason and click Save.
