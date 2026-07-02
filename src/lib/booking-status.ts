@@ -16,6 +16,18 @@ export const STATUS_META: Record<
     dotClass: "bg-orange-500",
     calendarClass: "bg-orange-100 text-orange-900 border-orange-300 dark:bg-orange-500/20 dark:text-orange-200 dark:border-orange-500/40",
   },
+  payment_pending: {
+    label: "Payment Pending",
+    badgeClass: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
+    dotClass: "bg-amber-500",
+    calendarClass: "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-500/20 dark:text-amber-200 dark:border-amber-500/40",
+  },
+  cook_job_enquiry: {
+    label: "Cook Job Enquiry",
+    badgeClass: "bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30",
+    dotClass: "bg-teal-500",
+    calendarClass: "bg-teal-100 text-teal-900 border-teal-300 dark:bg-teal-500/20 dark:text-teal-200 dark:border-teal-500/40",
+  },
   cooking_confirmed: {
     label: "Cooking Confirmed",
     badgeClass: "bg-green-100 text-green-800 border-green-200 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/30",
