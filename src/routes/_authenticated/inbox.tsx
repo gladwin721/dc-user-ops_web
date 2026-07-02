@@ -420,27 +420,17 @@ function OperatorDashboard() {
                 </p>
               </div>
               <div className="flex items-center gap-4">
-                <StatusMultiSelect
-                  statuses={
-                    pendingCancel
-                      ? Array.from(new Set([...selectedStatuses, "cancelled"])) as BookingStatus[]
-                      : selectedStatuses
-                  }
+                <StatusSelect
+                  status={selectedStatuses[0] ?? null}
                   saveState={statusSaveState}
-                  onChange={(next) => {
+                  onChange={(status) => {
                     const wasCancelled = selectedStatuses.includes("cancelled");
-                    const nowCancelled = next.includes("cancelled");
-                    if (nowCancelled && !wasCancelled) {
-                      // Defer save until reason chosen
+                    if (status === "cancelled" && !wasCancelled) {
                       setPendingCancel(true);
                       return;
                     }
                     setPendingCancel(false);
-                    if (next.length === 0) {
-                      toast.error("Select at least one status");
-                      return;
-                    }
-                    statusMutation.mutate({ statuses: next });
+                    statusMutation.mutate({ statuses: [status] });
                   }}
                 />
                 <ModeToggle
