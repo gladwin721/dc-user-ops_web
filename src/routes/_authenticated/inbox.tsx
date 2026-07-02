@@ -292,9 +292,12 @@ function OperatorDashboard() {
 
   const allRows = listQuery.data?.rows ?? [];
   const rows =
-    statusFilter === "all"
+    statusFilter.length === 0
       ? allRows
-      : allRows.filter((r) => parseStatuses(r.status).includes(statusFilter));
+      : allRows.filter((r) => {
+          const rs = parseStatuses(r.status);
+          return statusFilter.some((s) => rs.includes(s));
+        });
   const listError = listQuery.data?.error;
 
   // Current server-side selected statuses
