@@ -821,45 +821,7 @@ function CancellationReasonBar({
 }
 
 
-const STATUS_META: Record<
-  BookingStatus,
-  { label: string; badgeClass: string; dotClass: string }
-> = {
-  new: {
-    label: "New",
-    badgeClass: "bg-muted text-muted-foreground border-transparent",
-    dotClass: "bg-muted-foreground",
-  },
-  booking_pending: {
-    label: "Booking Pending",
-    badgeClass: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30",
-    dotClass: "bg-orange-500",
-  },
-  cooking_confirmed: {
-    label: "Cooking Confirmed",
-    badgeClass: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30",
-    dotClass: "bg-blue-500",
-  },
-  completed: {
-    label: "Completed",
-    badgeClass: "bg-green-100 text-green-800 border-green-200 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/30",
-    dotClass: "bg-green-500",
-  },
-  cancelled: {
-    label: "Cancelled",
-    badgeClass: "bg-red-100 text-red-800 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30",
-    dotClass: "bg-red-500",
-  },
-  repeat_booking: {
-    label: "Repeat Booking",
-    badgeClass: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30",
-    dotClass: "bg-purple-500",
-  },
-};
-
-function isBookingStatus(v: string | null | undefined): v is BookingStatus {
-  return !!v && (BOOKING_STATUSES as readonly string[]).includes(v);
-}
+import { STATUS_META, isBookingStatus } from "@/lib/booking-status";
 
 function StatusBadge({ status, small }: { status: BookingStatus | string | null; small?: boolean }) {
   if (!isBookingStatus(status)) {
