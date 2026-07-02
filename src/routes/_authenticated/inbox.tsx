@@ -323,19 +323,59 @@ function OperatorDashboard() {
           </div>
         </header>
         <div className="border-b p-2">
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as "all" | BookingStatus)}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {BOOKING_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {STATUS_META[s].label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 w-full justify-between text-xs font-normal">
+                <span className="truncate">
+                  {statusFilter.length === 0
+                    ? "All statuses"
+                    : statusFilter.length === 1
+                      ? STATUS_META[statusFilter[0]].label
+                      : `${statusFilter.length} statuses`}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuLabel className="text-xs">Filter by status</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {statusFilter.length > 0 && (
+                <>
+                  <DropdownMenuCheckboxItem
+                    checked={false}
+                    onCheckedChange={() => setStatusFilter([])}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <span className="text-xs">Clear all</span>
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {BOOKING_STATUSES.map((s) => {
+                const checked = statusFilter.includes(s);
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={s}
+                    checked={checked}
+                    onCheckedChange={(c) => {
+                      setStatusFilter((prev) => {
+                        const set = new Set(prev);
+                        if (c) set.add(s);
+                        else set.delete(s);
+                        return (BOOKING_STATUSES as readonly BookingStatus[]).filter((x) => set.has(x));
+                      });
+                    }}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <span className="flex items-center gap-2 text-xs">
+                      <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[s].dotClass)} />
+                      {STATUS_META[s].label}
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <div className="flex-1 overflow-y-auto">
           {listError && (
