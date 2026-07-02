@@ -123,10 +123,13 @@ export const updateConversationMode = createServerFn({ method: "POST" })
 export const BOOKING_STATUSES = [
   "new",
   "booking_pending",
+  "payment_pending",
+  "cook_job_enquiry",
   "cooking_confirmed",
   "completed",
   "cancelled",
   "repeat_booking",
+  "archived",
 ] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
