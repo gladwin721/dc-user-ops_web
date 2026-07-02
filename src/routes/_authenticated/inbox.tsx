@@ -421,7 +421,9 @@ function OperatorDashboard() {
               </div>
               <div className="flex items-center gap-4">
                 <StatusSelect
-                  status={selectedStatuses[0] ?? null}
+                  status={
+                    pendingCancel ? "cancelled" : (selectedStatuses[0] ?? null)
+                  }
                   saveState={statusSaveState}
                   onChange={(status) => {
                     const wasCancelled = selectedStatuses.includes("cancelled");
