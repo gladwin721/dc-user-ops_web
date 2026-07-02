@@ -420,27 +420,19 @@ function OperatorDashboard() {
                 </p>
               </div>
               <div className="flex items-center gap-4">
-                <StatusMultiSelect
-                  statuses={
-                    pendingCancel
-                      ? Array.from(new Set([...selectedStatuses, "cancelled"])) as BookingStatus[]
-                      : selectedStatuses
+                <StatusSelect
+                  status={
+                    pendingCancel ? "cancelled" : (selectedStatuses[0] ?? null)
                   }
                   saveState={statusSaveState}
-                  onChange={(next) => {
+                  onChange={(status) => {
                     const wasCancelled = selectedStatuses.includes("cancelled");
-                    const nowCancelled = next.includes("cancelled");
-                    if (nowCancelled && !wasCancelled) {
-                      // Defer save until reason chosen
+                    if (status === "cancelled" && !wasCancelled) {
                       setPendingCancel(true);
                       return;
                     }
                     setPendingCancel(false);
-                    if (next.length === 0) {
-                      toast.error("Select at least one status");
-                      return;
-                    }
-                    statusMutation.mutate({ statuses: next });
+                    statusMutation.mutate({ statuses: [status] });
                   }}
                 />
                 <ModeToggle
@@ -465,11 +457,8 @@ function OperatorDashboard() {
                     toast.error("Please select a cancellation reason");
                     return;
                   }
-                  const nextStatuses = Array.from(
-                    new Set<BookingStatus>([...selectedStatuses, "cancelled"]),
-                  );
                   statusMutation.mutate(
-                    { statuses: nextStatuses, cancellation_reason: finalReason },
+                    { statuses: ["cancelled"], cancellation_reason: finalReason },
                     { onSuccess: () => setPendingCancel(false) },
                   );
                 }}
@@ -899,61 +888,45 @@ function StatusBadges({ status, small }: { status: string | null; small?: boolea
   );
 }
 
-function StatusMultiSelect({
-  statuses,
+function StatusSelect({
+  status,
   saveState,
   onChange,
 }: {
-  statuses: BookingStatus[];
+  status: BookingStatus | null;
   saveState: "idle" | "saving" | "saved" | "error";
-  onChange: (s: BookingStatus[]) => void;
+  onChange: (s: BookingStatus) => void;
 }) {
-  const summary =
-    statuses.length === 0
-      ? "Select status"
-      : statuses.length === 1
-        ? STATUS_META[statuses[0]].label
-        : `${statuses.length} selected`;
-  const set = new Set(statuses);
+  const label = status ? STATUS_META[status].label : "Select status";
   return (
     <div className="flex items-center gap-2">
       <Label className="text-xs text-muted-foreground">Status</Label>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild disabled={saveState === "saving"}>
-          <Button variant="outline" size="sm" className="h-8 w-[220px] justify-between text-xs font-normal">
-            <span className="flex items-center gap-1.5 truncate">
-              {statuses.length > 0 && (
-                <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[statuses[0]].dotClass)} />
-              )}
-              <span className="truncate">{summary}</span>
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel className="text-xs">Statuses</DropdownMenuLabel>
-          <DropdownMenuSeparator />
+      <Select
+        value={status ?? ""}
+        onValueChange={(v) => {
+          if (isBookingStatus(v)) onChange(v);
+        }}
+        disabled={saveState === "saving"}
+      >
+        <SelectTrigger className="h-8 w-[220px] text-xs font-normal">
+          <span className="flex items-center gap-1.5 truncate">
+            {status && (
+              <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[status].dotClass)} />
+            )}
+            <span className="truncate">{label}</span>
+          </span>
+        </SelectTrigger>
+        <SelectContent>
           {BOOKING_STATUSES.map((s) => (
-            <DropdownMenuCheckboxItem
-              key={s}
-              checked={set.has(s)}
-              onCheckedChange={(checked) => {
-                const next = new Set(statuses);
-                if (checked) next.add(s);
-                else next.delete(s);
-                const ordered = (BOOKING_STATUSES as readonly BookingStatus[]).filter((x) => next.has(x));
-                onChange(ordered);
-              }}
-              onSelect={(e) => e.preventDefault()}
-            >
-              <span className="flex items-center gap-2 text-xs">
+            <SelectItem key={s} value={s} className="text-xs">
+              <span className="flex items-center gap-2">
                 <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[s].dotClass)} />
                 {STATUS_META[s].label}
               </span>
-            </DropdownMenuCheckboxItem>
+            </SelectItem>
           ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </SelectContent>
+      </Select>
       <span className="w-4 text-muted-foreground">
         {saveState === "saving" && <Loader2 className="h-4 w-4 animate-spin" />}
         {saveState === "saved" && <Check className="h-4 w-4 text-green-600" />}
