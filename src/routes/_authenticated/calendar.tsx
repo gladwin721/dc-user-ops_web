@@ -117,7 +117,7 @@ function CalendarPage() {
         : format(cursor, "EEEE, MMMM d, yyyy");
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-3rem)] w-full max-w-7xl flex-col gap-4 p-6">
+    <div className="mx-auto flex h-[calc(100vh-3rem)] w-full max-w-7xl flex-col gap-4 p-3 sm:p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
