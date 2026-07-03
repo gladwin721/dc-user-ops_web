@@ -783,29 +783,31 @@ function Composer({
   }
 
   return (
-    <div className="border-t bg-background px-6 py-4">
-      <div className="flex items-end gap-3">
+    <div className="border-t bg-background px-3 py-3 sm:px-6 sm:py-4">
+      <div className="flex items-end gap-2 sm:gap-3">
         <Textarea
           ref={ref}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKey}
-          placeholder="Type a message to send via WhatsApp (handled by Make.com webhook)…  ⌘/Ctrl+Enter to send"
-          rows={3}
-          className="resize-none"
+          placeholder="Type a message… ⌘/Ctrl+Enter to send"
+          rows={2}
+          className="resize-none text-sm sm:rows-3"
         />
         <Button
           onClick={onSend}
           disabled={sending || value.trim().length === 0}
-          className="h-10 shrink-0"
+          className="h-10 shrink-0 px-3 sm:px-4"
+          title="Send"
         >
-          <Send className="mr-2 h-4 w-4" />
-          {sending ? "Sending…" : "Send"}
+          <Send className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">{sending ? "Sending…" : "Send"}</span>
         </Button>
       </div>
     </div>
   );
 }
+
 
 function DetailRow({
   icon,
