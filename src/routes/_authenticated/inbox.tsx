@@ -37,7 +37,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check, ExternalLink, ChevronDown, ChefHat, Repeat } from "lucide-react";
+import { Send, Phone, MapPin, Calendar, Clock, Users, MessageSquare, Bot, UserRound, Inbox, Loader2, Check, ExternalLink, ChevronDown, ChefHat, Repeat, ArrowLeft, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
@@ -121,11 +121,18 @@ function OperatorDashboard() {
   const [pendingCancel, setPendingCancel] = useState(false);
   const [reasonChoice, setReasonChoice] = useState<string>("");
   const [otherText, setOtherText] = useState<string>("");
+  // Collapsible panels (desktop) and single-pane navigation (mobile)
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
+  const [mobileView, setMobileView] = useState<"list" | "chat" | "details">(
+    search.id !== undefined ? "chat" : "list",
+  );
 
   // Sync URL ?id= -> selection
   useEffect(() => {
     if (search.id !== undefined && search.id !== selectedId) {
       setSelectedId(search.id);
+      setMobileView("chat");
     }
   }, [search.id]);
 
@@ -312,15 +319,30 @@ function OperatorDashboard() {
   return (
     <div className="flex h-[calc(100vh-3rem)] w-full overflow-hidden bg-background text-foreground">
       {/* LEFT — Queue */}
-      <aside className="flex w-80 shrink-0 flex-col border-r">
+      <aside
+        className={cn(
+          "flex-col border-r bg-background",
+          mobileView === "list" ? "flex w-full" : "hidden",
+          leftOpen ? "md:flex md:w-80 md:shrink-0" : "md:hidden",
+        )}
+      >
         <header className="flex items-center gap-2 border-b px-4 py-3">
           <Inbox className="h-5 w-5 text-primary" />
-          <div>
-            <h1 className="text-sm font-semibold leading-tight">DashCook Inbox</h1>
-            <p className="text-xs text-muted-foreground">
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-sm font-semibold leading-tight">DashCook Inbox</h1>
+            <p className="truncate text-xs text-muted-foreground">
               {listQuery.isFetching ? "Refreshing…" : `${rows.length} conversations`}
             </p>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden h-7 w-7 md:inline-flex"
+            onClick={() => setLeftOpen(false)}
+            title="Collapse conversations"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
         </header>
         <div className="border-b p-2">
           <DropdownMenu>
@@ -394,7 +416,10 @@ function OperatorDashboard() {
                 key={String(c.id)}
                 row={c}
                 active={selectedId === c.id}
-                onClick={() => setSelectedId(c.id)}
+                onClick={() => {
+                  setSelectedId(c.id);
+                  setMobileView("chat");
+                }}
               />
             ))}
           </ul>
@@ -402,24 +427,60 @@ function OperatorDashboard() {
       </aside>
 
       {/* CENTER — Conversation */}
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section
+        className={cn(
+          "min-w-0 flex-col md:flex md:flex-1",
+          mobileView === "chat" ? "flex flex-1" : "hidden",
+        )}
+      >
         {!selected ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+          <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
             Select a conversation to view its history.
           </div>
         ) : (
           <>
-            <header className="flex items-center justify-between border-b px-6 py-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span className="truncate">{selected.phone ?? "Unknown"}</span>
+            <header className="flex flex-col gap-2 border-b px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
+              <div className="flex min-w-0 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="-ml-1 h-8 w-8 shrink-0 md:hidden"
+                  onClick={() => setMobileView("list")}
+                  title="Back to conversations"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                {!leftOpen && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="hidden h-8 w-8 shrink-0 md:inline-flex"
+                    onClick={() => setLeftOpen(true)}
+                    title="Show conversations"
+                  >
+                    <PanelLeftOpen className="h-4 w-4" />
+                  </Button>
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{selected.phone ?? "Unknown"}</span>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    Last activity {formatDateTime(selected.last_message_at)}
+                  </p>
                 </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Last activity {formatDateTime(selected.last_message_at)}
-                </p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="ml-auto h-8 w-8 shrink-0 md:hidden"
+                  onClick={() => setMobileView("details")}
+                  title="Booking details"
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-3 sm:justify-end">
                 <StatusSelect
                   status={
                     pendingCancel ? "cancelled" : (selectedStatuses[0] ?? null)
@@ -440,6 +501,17 @@ function OperatorDashboard() {
                   pending={modeMutation.isPending}
                   onChange={(m) => modeMutation.mutate(m)}
                 />
+                {!rightOpen && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="hidden h-8 w-8 shrink-0 md:inline-flex"
+                    onClick={() => setRightOpen(true)}
+                    title="Show booking details"
+                  >
+                    <PanelRightOpen className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </header>
 
@@ -483,7 +555,7 @@ function OperatorDashboard() {
               />
             )}
 
-            <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto px-6 py-4">
+            <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto px-3 py-4 sm:px-6">
               {messages.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No messages in history yet.</div>
               ) : (
@@ -506,10 +578,36 @@ function OperatorDashboard() {
       </section>
 
       {/* RIGHT — Booking details */}
-      <aside className="hidden w-80 shrink-0 flex-col border-l lg:flex">
-        <header className="border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">Booking details</h2>
-          <p className="text-xs text-muted-foreground">From the selected conversation</p>
+      <aside
+        className={cn(
+          "flex-col border-l bg-background",
+          mobileView === "details" ? "flex w-full" : "hidden",
+          rightOpen ? "md:flex md:w-80 md:shrink-0" : "md:hidden",
+        )}
+      >
+        <header className="flex items-center gap-2 border-b px-4 py-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="-ml-1 h-8 w-8 shrink-0 md:hidden"
+            onClick={() => setMobileView("chat")}
+            title="Back to conversation"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-sm font-semibold">Booking details</h2>
+            <p className="truncate text-xs text-muted-foreground">From the selected conversation</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden h-7 w-7 md:inline-flex"
+            onClick={() => setRightOpen(false)}
+            title="Collapse booking details"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </Button>
         </header>
         <div className="flex-1 overflow-y-auto p-4">
           {!selected ? (
@@ -540,6 +638,7 @@ function OperatorDashboard() {
     </div>
   );
 }
+
 
 function ConversationListItem({
   row,
@@ -685,29 +784,31 @@ function Composer({
   }
 
   return (
-    <div className="border-t bg-background px-6 py-4">
-      <div className="flex items-end gap-3">
+    <div className="border-t bg-background px-3 py-3 sm:px-6 sm:py-4">
+      <div className="flex items-end gap-2 sm:gap-3">
         <Textarea
           ref={ref}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKey}
-          placeholder="Type a message to send via WhatsApp (handled by Make.com webhook)…  ⌘/Ctrl+Enter to send"
-          rows={3}
-          className="resize-none"
+          placeholder="Type a message… ⌘/Ctrl+Enter to send"
+          rows={2}
+          className="resize-none text-sm sm:rows-3"
         />
         <Button
           onClick={onSend}
           disabled={sending || value.trim().length === 0}
-          className="h-10 shrink-0"
+          className="h-10 shrink-0 px-3 sm:px-4"
+          title="Send"
         >
-          <Send className="mr-2 h-4 w-4" />
-          {sending ? "Sending…" : "Send"}
+          <Send className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">{sending ? "Sending…" : "Send"}</span>
         </Button>
       </div>
     </div>
   );
 }
+
 
 function DetailRow({
   icon,
@@ -802,7 +903,7 @@ function CancellationReasonBar({
   const isOther = reasonChoice === "Other";
   const canSave = isOther ? otherText.trim().length > 0 : reasonChoice.trim().length > 0;
   return (
-    <div className="border-b bg-muted/30 px-6 py-3">
+    <div className="border-b bg-muted/30 px-3 py-3 sm:px-6">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-[260px] flex-1 items-center gap-2">
           <Label className="shrink-0 text-xs text-muted-foreground">
@@ -908,7 +1009,7 @@ function StatusSelect({
         }}
         disabled={saveState === "saving"}
       >
-        <SelectTrigger className="h-8 w-[220px] text-xs font-normal">
+        <SelectTrigger className="h-8 w-[170px] text-xs font-normal sm:w-[220px]">
           <span className="flex items-center gap-1.5 truncate">
             {status && (
               <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[status].dotClass)} />
