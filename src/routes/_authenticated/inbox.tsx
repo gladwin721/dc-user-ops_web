@@ -121,6 +121,12 @@ function OperatorDashboard() {
   const [pendingCancel, setPendingCancel] = useState(false);
   const [reasonChoice, setReasonChoice] = useState<string>("");
   const [otherText, setOtherText] = useState<string>("");
+  // Collapsible panels (desktop) and single-pane navigation (mobile)
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
+  const [mobileView, setMobileView] = useState<"list" | "chat" | "details">(
+    search.id !== undefined ? "chat" : "list",
+  );
 
   // Sync URL ?id= -> selection
   useEffect(() => {
