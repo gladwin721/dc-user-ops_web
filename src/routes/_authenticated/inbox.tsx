@@ -132,6 +132,7 @@ function OperatorDashboard() {
   useEffect(() => {
     if (search.id !== undefined && search.id !== selectedId) {
       setSelectedId(search.id);
+      setMobileView("chat");
     }
   }, [search.id]);
 
