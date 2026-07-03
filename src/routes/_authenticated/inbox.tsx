@@ -902,7 +902,7 @@ function CancellationReasonBar({
   const isOther = reasonChoice === "Other";
   const canSave = isOther ? otherText.trim().length > 0 : reasonChoice.trim().length > 0;
   return (
-    <div className="border-b bg-muted/30 px-6 py-3">
+    <div className="border-b bg-muted/30 px-3 py-3 sm:px-6">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-[260px] flex-1 items-center gap-2">
           <Label className="shrink-0 text-xs text-muted-foreground">
