@@ -152,7 +152,7 @@ function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 p-6">
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-3 sm:p-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Operations Dashboard</h1>
         <p className="text-sm text-muted-foreground">
