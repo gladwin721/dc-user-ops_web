@@ -1008,7 +1008,7 @@ function StatusSelect({
         }}
         disabled={saveState === "saving"}
       >
-        <SelectTrigger className="h-8 w-[220px] text-xs font-normal">
+        <SelectTrigger className="h-8 w-[170px] text-xs font-normal sm:w-[220px]">
           <span className="flex items-center gap-1.5 truncate">
             {status && (
               <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_META[status].dotClass)} />
