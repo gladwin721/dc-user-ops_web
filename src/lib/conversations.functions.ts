@@ -69,7 +69,7 @@ export const getConversation = createServerFn({ method: "GET" })
     const supabase = await getSupabase();
     const { data: row, error } = await supabase
       .from("conversations")
-      .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, history, location_lat, location_lng, subscription_enquiry")
+      .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, history, location_lat, location_lng, subscription_enquiry, conversation_source")
       .eq("id", data.id)
       .maybeSingle();
 
@@ -80,10 +80,12 @@ export const getConversation = createServerFn({ method: "GET" })
 
     let cancellation_reason: string | null = null;
     let cook_assigned: string | null = null;
+    let pre_booking_payment_link: string | null = null;
+    let full_payment_link: string | null = null;
     if (row) {
       const { data: order, error: orderErr } = await supabase
         .from("orders")
-        .select("cancellation_reason, cook_assigned")
+        .select("cancellation_reason, cook_assigned, pre_booking_payment_link, full_payment_link")
         .eq("conversation_id", data.id)
         .maybeSingle();
       if (orderErr) {
@@ -91,12 +93,15 @@ export const getConversation = createServerFn({ method: "GET" })
       } else if (order) {
         cancellation_reason = (order.cancellation_reason as string | null) ?? null;
         cook_assigned = (order.cook_assigned as string | null) ?? null;
+        pre_booking_payment_link = (order.pre_booking_payment_link as string | null) ?? null;
+        full_payment_link = (order.full_payment_link as string | null) ?? null;
       }
     }
 
     const merged = row
-      ? ({ ...row, cancellation_reason, cook_assigned } as ConversationRow)
+      ? ({ ...row, cancellation_reason, cook_assigned, pre_booking_payment_link, full_payment_link } as ConversationRow)
       : null;
+
     return { row: merged, error: null as string | null };
   });
 
