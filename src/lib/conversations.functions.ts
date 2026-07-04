@@ -30,6 +30,10 @@ export type ConversationRow = {
   cancellation_reason?: string | null;
   cook_assigned?: string | null;
   subscription_enquiry?: string | null;
+  conversation_source?: string | null;
+  pre_booking_payment_link?: string | null;
+  full_payment_link?: string | null;
+
 };
 
 const GENERIC_READ_ERROR = "Unable to load conversations";
