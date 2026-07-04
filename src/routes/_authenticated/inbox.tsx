@@ -112,6 +112,8 @@ function OperatorDashboard() {
   const sendFn = useServerFn(sendOperatorMessage);
   const updateFieldsFn = useServerFn(updateConversationFields);
   const updateCookFn = useServerFn(updateOrderCookAssigned);
+  const updatePayFn = useServerFn(updateOrderPaymentLinks);
+
 
   const search = Route.useSearch();
   const [selectedId, setSelectedId] = useState<string | number | null>(search.id ?? null);
