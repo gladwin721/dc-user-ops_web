@@ -211,6 +211,49 @@ export const updateOrderCookAssigned = createServerFn({ method: "POST" })
     return { ok: true, error: null as string | null };
   });
 
+const ORDER_PAYMENT_FIELDS = ["pre_booking_payment_link", "full_payment_link"] as const;
+type OrderPaymentField = (typeof ORDER_PAYMENT_FIELDS)[number];
+
+export const updateOrderPaymentLinks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: {
+    conversation_id: string | number;
+    fields: Partial<Record<OrderPaymentField, string | null>>;
+  }) => {
+    if (input?.conversation_id === undefined || input?.conversation_id === null || input.conversation_id === "") {
+      throw new Error("conversation_id is required");
+    }
+    if (!input.fields || typeof input.fields !== "object") {
+      throw new Error("fields is required");
+    }
+    const cleaned: Partial<Record<OrderPaymentField, string | null>> = {};
+    for (const key of Object.keys(input.fields) as OrderPaymentField[]) {
+      if (!ORDER_PAYMENT_FIELDS.includes(key)) continue;
+      let val = input.fields[key];
+      if (typeof val === "string") {
+        const trimmed = val.trim();
+        val = trimmed === "" ? null : trimmed;
+      }
+      cleaned[key] = val as string | null;
+    }
+    if (Object.keys(cleaned).length === 0) throw new Error("no fields to update");
+    return { conversation_id: input.conversation_id, fields: cleaned };
+  })
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+    const { error } = await supabase
+      .from("orders")
+      .update(data.fields)
+      .eq("conversation_id", data.conversation_id);
+    if (error) {
+      console.error("[conversations] update order payment links error:", error);
+      return { ok: false, error: GENERIC_WRITE_ERROR };
+    }
+    return { ok: true, error: null as string | null };
+  });
+
+
+
 // Deprecated single-status writer kept for compatibility.
 export const updateConversationStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
