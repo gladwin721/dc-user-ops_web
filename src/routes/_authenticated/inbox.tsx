@@ -1055,10 +1055,12 @@ function BookingDetailsPanel({
   row,
   onSaveFields,
   onSaveCook,
+  onSavePaymentLinks,
 }: {
   row: ConversationRow;
   onSaveFields: (fields: Record<string, string | number | null>) => Promise<void>;
   onSaveCook: (cook_assigned: string | null) => Promise<void>;
+  onSavePaymentLinks: (fields: Record<string, string | null>) => Promise<void>;
 }) {
   const [area, setArea] = useState(row.area ?? "");
   const [date, setDate] = useState(row.booking_date ?? "");
@@ -1066,6 +1068,9 @@ function BookingDetailsPanel({
   const [people, setPeople] = useState(row.people != null ? String(row.people) : "");
   const [cook, setCook] = useState(row.cook_assigned ?? "");
   const [subEnq, setSubEnq] = useState(row.subscription_enquiry ?? "");
+  const [source, setSource] = useState(row.conversation_source ?? "");
+  const [prepay, setPrepay] = useState(row.pre_booking_payment_link ?? "");
+  const [fullpay, setFullpay] = useState(row.full_payment_link ?? "");
 
   // Sync when incoming row changes (polling)
   useEffect(() => {
@@ -1075,6 +1080,9 @@ function BookingDetailsPanel({
     setPeople(row.people != null ? String(row.people) : "");
     setCook(row.cook_assigned ?? "");
     setSubEnq(row.subscription_enquiry ?? "");
+    setSource(row.conversation_source ?? "");
+    setPrepay(row.pre_booking_payment_link ?? "");
+    setFullpay(row.full_payment_link ?? "");
   }, [row.id]);
 
   async function saveField(field: string, value: string, original: string) {
@@ -1086,6 +1094,18 @@ function BookingDetailsPanel({
       toast.error(e instanceof Error ? e.message : "Save failed");
     }
   }
+
+  async function savePaymentField(field: "pre_booking_payment_link" | "full_payment_link", value: string, original: string) {
+    if (value === original) return;
+    try {
+      await onSavePaymentLinks({ [field]: value.trim() === "" ? null : value.trim() });
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+
 
   async function savePeople() {
     const original = row.people != null ? String(row.people) : "";
