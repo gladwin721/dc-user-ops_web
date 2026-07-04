@@ -635,6 +635,15 @@ function OperatorDashboard() {
                   qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
                 })
               }
+              onSavePaymentLinks={(fields) =>
+                updatePayFn({
+                  data: { conversation_id: selected.id, fields },
+                }).then((res) => {
+                  if (!res.ok) throw new Error(res.error ?? "Save failed");
+                  qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+                })
+              }
+
             />
           )}
         </div>
