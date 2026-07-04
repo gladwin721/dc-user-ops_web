@@ -30,6 +30,10 @@ export type ConversationRow = {
   cancellation_reason?: string | null;
   cook_assigned?: string | null;
   subscription_enquiry?: string | null;
+  conversation_source?: string | null;
+  pre_booking_payment_link?: string | null;
+  full_payment_link?: string | null;
+
 };
 
 const GENERIC_READ_ERROR = "Unable to load conversations";
@@ -65,7 +69,7 @@ export const getConversation = createServerFn({ method: "GET" })
     const supabase = await getSupabase();
     const { data: row, error } = await supabase
       .from("conversations")
-      .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, history, location_lat, location_lng, subscription_enquiry")
+      .select("id, phone, mode, area, booking_date, booking_time, people, status, last_message_at, history, location_lat, location_lng, subscription_enquiry, conversation_source")
       .eq("id", data.id)
       .maybeSingle();
 
@@ -76,10 +80,12 @@ export const getConversation = createServerFn({ method: "GET" })
 
     let cancellation_reason: string | null = null;
     let cook_assigned: string | null = null;
+    let pre_booking_payment_link: string | null = null;
+    let full_payment_link: string | null = null;
     if (row) {
       const { data: order, error: orderErr } = await supabase
         .from("orders")
-        .select("cancellation_reason, cook_assigned")
+        .select("cancellation_reason, cook_assigned, pre_booking_payment_link, full_payment_link")
         .eq("conversation_id", data.id)
         .maybeSingle();
       if (orderErr) {
@@ -87,12 +93,15 @@ export const getConversation = createServerFn({ method: "GET" })
       } else if (order) {
         cancellation_reason = (order.cancellation_reason as string | null) ?? null;
         cook_assigned = (order.cook_assigned as string | null) ?? null;
+        pre_booking_payment_link = (order.pre_booking_payment_link as string | null) ?? null;
+        full_payment_link = (order.full_payment_link as string | null) ?? null;
       }
     }
 
     const merged = row
-      ? ({ ...row, cancellation_reason, cook_assigned } as ConversationRow)
+      ? ({ ...row, cancellation_reason, cook_assigned, pre_booking_payment_link, full_payment_link } as ConversationRow)
       : null;
+
     return { row: merged, error: null as string | null };
   });
 
@@ -134,7 +143,7 @@ export const BOOKING_STATUSES = [
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 // Editable booking fields on the conversations table
-const EDITABLE_FIELDS = ["area", "booking_date", "booking_time", "people", "subscription_enquiry"] as const;
+const EDITABLE_FIELDS = ["area", "booking_date", "booking_time", "people", "subscription_enquiry", "conversation_source"] as const;
 type EditableField = (typeof EDITABLE_FIELDS)[number];
 
 export const updateConversationFields = createServerFn({ method: "POST" })
@@ -201,6 +210,49 @@ export const updateOrderCookAssigned = createServerFn({ method: "POST" })
     }
     return { ok: true, error: null as string | null };
   });
+
+const ORDER_PAYMENT_FIELDS = ["pre_booking_payment_link", "full_payment_link"] as const;
+type OrderPaymentField = (typeof ORDER_PAYMENT_FIELDS)[number];
+
+export const updateOrderPaymentLinks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: {
+    conversation_id: string | number;
+    fields: Partial<Record<OrderPaymentField, string | null>>;
+  }) => {
+    if (input?.conversation_id === undefined || input?.conversation_id === null || input.conversation_id === "") {
+      throw new Error("conversation_id is required");
+    }
+    if (!input.fields || typeof input.fields !== "object") {
+      throw new Error("fields is required");
+    }
+    const cleaned: Partial<Record<OrderPaymentField, string | null>> = {};
+    for (const key of Object.keys(input.fields) as OrderPaymentField[]) {
+      if (!ORDER_PAYMENT_FIELDS.includes(key)) continue;
+      let val = input.fields[key];
+      if (typeof val === "string") {
+        const trimmed = val.trim();
+        val = trimmed === "" ? null : trimmed;
+      }
+      cleaned[key] = val as string | null;
+    }
+    if (Object.keys(cleaned).length === 0) throw new Error("no fields to update");
+    return { conversation_id: input.conversation_id, fields: cleaned };
+  })
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+    const { error } = await supabase
+      .from("orders")
+      .update(data.fields)
+      .eq("conversation_id", data.conversation_id);
+    if (error) {
+      console.error("[conversations] update order payment links error:", error);
+      return { ok: false, error: GENERIC_WRITE_ERROR };
+    }
+    return { ok: true, error: null as string | null };
+  });
+
+
 
 // Deprecated single-status writer kept for compatibility.
 export const updateConversationStatus = createServerFn({ method: "POST" })

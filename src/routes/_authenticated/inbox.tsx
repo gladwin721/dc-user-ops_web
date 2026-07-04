@@ -9,6 +9,8 @@ import {
   updateConversationMode,
   updateConversationFields,
   updateOrderCookAssigned,
+  updateOrderPaymentLinks,
+
   saveBookingStatus,
   sendOperatorMessage,
   parseStatuses,
@@ -110,6 +112,8 @@ function OperatorDashboard() {
   const sendFn = useServerFn(sendOperatorMessage);
   const updateFieldsFn = useServerFn(updateConversationFields);
   const updateCookFn = useServerFn(updateOrderCookAssigned);
+  const updatePayFn = useServerFn(updateOrderPaymentLinks);
+
 
   const search = Route.useSearch();
   const [selectedId, setSelectedId] = useState<string | number | null>(search.id ?? null);
@@ -631,6 +635,15 @@ function OperatorDashboard() {
                   qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
                 })
               }
+              onSavePaymentLinks={(fields) =>
+                updatePayFn({
+                  data: { conversation_id: selected.id, fields },
+                }).then((res) => {
+                  if (!res.ok) throw new Error(res.error ?? "Save failed");
+                  qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+                })
+              }
+
             />
           )}
         </div>
@@ -1042,10 +1055,12 @@ function BookingDetailsPanel({
   row,
   onSaveFields,
   onSaveCook,
+  onSavePaymentLinks,
 }: {
   row: ConversationRow;
   onSaveFields: (fields: Record<string, string | number | null>) => Promise<void>;
   onSaveCook: (cook_assigned: string | null) => Promise<void>;
+  onSavePaymentLinks: (fields: Record<string, string | null>) => Promise<void>;
 }) {
   const [area, setArea] = useState(row.area ?? "");
   const [date, setDate] = useState(row.booking_date ?? "");
@@ -1053,6 +1068,9 @@ function BookingDetailsPanel({
   const [people, setPeople] = useState(row.people != null ? String(row.people) : "");
   const [cook, setCook] = useState(row.cook_assigned ?? "");
   const [subEnq, setSubEnq] = useState(row.subscription_enquiry ?? "");
+  const [source, setSource] = useState(row.conversation_source ?? "");
+  const [prepay, setPrepay] = useState(row.pre_booking_payment_link ?? "");
+  const [fullpay, setFullpay] = useState(row.full_payment_link ?? "");
 
   // Sync when incoming row changes (polling)
   useEffect(() => {
@@ -1062,6 +1080,9 @@ function BookingDetailsPanel({
     setPeople(row.people != null ? String(row.people) : "");
     setCook(row.cook_assigned ?? "");
     setSubEnq(row.subscription_enquiry ?? "");
+    setSource(row.conversation_source ?? "");
+    setPrepay(row.pre_booking_payment_link ?? "");
+    setFullpay(row.full_payment_link ?? "");
   }, [row.id]);
 
   async function saveField(field: string, value: string, original: string) {
@@ -1073,6 +1094,18 @@ function BookingDetailsPanel({
       toast.error(e instanceof Error ? e.message : "Save failed");
     }
   }
+
+  async function savePaymentField(field: "pre_booking_payment_link" | "full_payment_link", value: string, original: string) {
+    if (value === original) return;
+    try {
+      await onSavePaymentLinks({ [field]: value.trim() === "" ? null : value.trim() });
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+
 
   async function savePeople() {
     const original = row.people != null ? String(row.people) : "";
@@ -1157,6 +1190,30 @@ function BookingDetailsPanel({
           onCommit={saveSubEnqField}
           placeholder="Details of subscription enquiry"
           multiline
+        />
+        <EditableField
+          icon={<MessageSquare className="h-4 w-4" />}
+          label="Conversation Source"
+          value={source}
+          onChange={setSource}
+          onCommit={() => saveField("conversation_source", source, row.conversation_source ?? "")}
+          placeholder="e.g. WhatsApp, Instagram"
+        />
+        <EditableField
+          icon={<ExternalLink className="h-4 w-4" />}
+          label="Prepayment Link"
+          value={prepay}
+          onChange={setPrepay}
+          onCommit={() => savePaymentField("pre_booking_payment_link", prepay, row.pre_booking_payment_link ?? "")}
+          placeholder="https://…"
+        />
+        <EditableField
+          icon={<ExternalLink className="h-4 w-4" />}
+          label="Full Payment Link"
+          value={fullpay}
+          onChange={setFullpay}
+          onCommit={() => savePaymentField("full_payment_link", fullpay, row.full_payment_link ?? "")}
+          placeholder="https://…"
         />
       </div>
 
