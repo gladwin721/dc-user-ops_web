@@ -143,7 +143,7 @@ export const BOOKING_STATUSES = [
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 // Editable booking fields on the conversations table
-const EDITABLE_FIELDS = ["area", "booking_date", "booking_time", "people", "subscription_enquiry"] as const;
+const EDITABLE_FIELDS = ["area", "booking_date", "booking_time", "people", "subscription_enquiry", "conversation_source"] as const;
 type EditableField = (typeof EDITABLE_FIELDS)[number];
 
 export const updateConversationFields = createServerFn({ method: "POST" })
