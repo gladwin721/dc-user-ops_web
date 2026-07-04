@@ -1191,6 +1191,30 @@ function BookingDetailsPanel({
           placeholder="Details of subscription enquiry"
           multiline
         />
+        <EditableField
+          icon={<MessageSquare className="h-4 w-4" />}
+          label="Conversation Source"
+          value={source}
+          onChange={setSource}
+          onCommit={() => saveField("conversation_source", source, row.conversation_source ?? "")}
+          placeholder="e.g. WhatsApp, Instagram"
+        />
+        <EditableField
+          icon={<ExternalLink className="h-4 w-4" />}
+          label="Prepayment Link"
+          value={prepay}
+          onChange={setPrepay}
+          onCommit={() => savePaymentField("pre_booking_payment_link", prepay, row.pre_booking_payment_link ?? "")}
+          placeholder="https://…"
+        />
+        <EditableField
+          icon={<ExternalLink className="h-4 w-4" />}
+          label="Full Payment Link"
+          value={fullpay}
+          onChange={setFullpay}
+          onCommit={() => savePaymentField("full_payment_link", fullpay, row.full_payment_link ?? "")}
+          placeholder="https://…"
+        />
       </div>
 
       <dl className="space-y-3 border-t pt-4 text-sm">
