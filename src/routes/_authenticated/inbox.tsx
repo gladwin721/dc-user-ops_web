@@ -112,8 +112,9 @@ function OperatorDashboard() {
   const saveStatusFn = useServerFn(saveBookingStatus);
   const sendFn = useServerFn(sendOperatorMessage);
   const updateFieldsFn = useServerFn(updateConversationFields);
-  const updateCookFn = useServerFn(updateOrderCookAssigned);
-  const updatePayFn = useServerFn(updateOrderPaymentLinks);
+  const listOrdersFn = useServerFn(getOrdersForConversation);
+  const updateOrderFn = useServerFn(updateOrderFields);
+  const createOrderFn = useServerFn(createOrderForConversation);
 
 
   const search = Route.useSearch();
