@@ -1129,6 +1129,7 @@ type OrderDraft = Partial<Record<
   | "people"
   | "status"
   | "order_type"
+  | "cook_assigned"
   | "travel_charges"
   | "cook_time_taken_in_mins"
   | "cooking_amount_paid"
