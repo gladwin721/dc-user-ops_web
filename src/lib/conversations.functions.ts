@@ -382,3 +382,196 @@ export const sendOperatorMessage = createServerFn({ method: "POST" })
       return { ok: false, error: GENERIC_SEND_ERROR };
     }
   });
+
+// ==================== Orders ====================
+
+export type OrderRow = {
+  id: string;
+  order_id: string | null;
+  conversation_id: string | null;
+  phone: string | null;
+  order_type: string | null;
+  order_sequence: number | null;
+  status: string | null;
+  area: string | null;
+  booking_date: string | null;
+  booking_time: string | null;
+  people: number | string | null;
+  cook_assigned: string | null;
+  travel_charges: number | string | null;
+  cook_time_taken_in_mins: number | string | null;
+  cooking_amount_paid: number | string | null;
+  items_cooked: string | null;
+  notes: string | null;
+  rating: number | string | null;
+  cancellation_reason: string | null;
+  pre_booking_payment_link: string | null;
+  full_payment_link: string | null;
+  created_at: string | null;
+};
+
+const ORDER_SELECT =
+  "id, order_id, conversation_id, phone, order_type, order_sequence, status, area, booking_date, booking_time, people, cook_assigned, travel_charges, cook_time_taken_in_mins, cooking_amount_paid, items_cooked, notes, rating, cancellation_reason, pre_booking_payment_link, full_payment_link, created_at";
+
+export const getOrdersForConversation = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { conversation_id: string | number; phone: string | null }) => {
+    if (input?.conversation_id === undefined || input?.conversation_id === null || input.conversation_id === "") {
+      throw new Error("conversation_id is required");
+    }
+    return input;
+  })
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+    // Prefer phone-based lookup (customer scope) with fallback to conversation
+    let query = supabase.from("orders").select(ORDER_SELECT).order("created_at", { ascending: false });
+    if (data.phone) {
+      query = query.eq("phone", data.phone);
+    } else {
+      query = query.eq("conversation_id", data.conversation_id);
+    }
+    const { data: rows, error } = await query;
+    if (error) {
+      console.error("[orders] list error:", error);
+      return { rows: [] as OrderRow[], error: GENERIC_READ_ERROR };
+    }
+    return { rows: (rows ?? []) as OrderRow[], error: null as string | null };
+  });
+
+const ORDER_EDITABLE_FIELDS = [
+  "order_type",
+  "status",
+  "area",
+  "booking_date",
+  "booking_time",
+  "people",
+  "cook_assigned",
+  "travel_charges",
+  "cook_time_taken_in_mins",
+  "cooking_amount_paid",
+  "items_cooked",
+  "notes",
+  "rating",
+  "cancellation_reason",
+  "pre_booking_payment_link",
+  "full_payment_link",
+] as const;
+type OrderEditableField = (typeof ORDER_EDITABLE_FIELDS)[number];
+
+const NUMERIC_ORDER_FIELDS: OrderEditableField[] = [
+  "people",
+  "travel_charges",
+  "cook_time_taken_in_mins",
+  "cooking_amount_paid",
+  "rating",
+];
+
+export const updateOrderFields = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: {
+    id: string;
+    fields: Partial<Record<OrderEditableField, string | number | null>>;
+  }) => {
+    if (!input?.id) throw new Error("id is required");
+    if (!input.fields || typeof input.fields !== "object") throw new Error("fields is required");
+    const cleaned: Partial<Record<OrderEditableField, string | number | null>> = {};
+    for (const key of Object.keys(input.fields) as OrderEditableField[]) {
+      if (!ORDER_EDITABLE_FIELDS.includes(key)) continue;
+      let val = input.fields[key];
+      if (typeof val === "string") {
+        const trimmed = val.trim();
+        val = trimmed === "" ? null : trimmed;
+      }
+      if (NUMERIC_ORDER_FIELDS.includes(key) && val != null && val !== "") {
+        const n = typeof val === "number" ? val : Number(val);
+        if (Number.isNaN(n)) throw new Error(`${key} must be a number`);
+        val = n;
+      }
+      cleaned[key] = val as string | number | null;
+    }
+    if (Object.keys(cleaned).length === 0) throw new Error("no fields to update");
+    return { id: input.id, fields: cleaned };
+  })
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+    const { error } = await supabase.from("orders").update(data.fields).eq("id", data.id);
+    if (error) {
+      console.error("[orders] update error:", error);
+      return { ok: false, error: GENERIC_WRITE_ERROR };
+    }
+    return { ok: true, error: null as string | null };
+  });
+
+export const createOrderForConversation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: {
+    conversation_id: string | number;
+    phone: string | null;
+    fields?: Partial<Record<OrderEditableField, string | number | null>>;
+  }) => {
+    if (input?.conversation_id === undefined || input?.conversation_id === null || input.conversation_id === "") {
+      throw new Error("conversation_id is required");
+    }
+    const cleaned: Partial<Record<OrderEditableField, string | number | null>> = {};
+    if (input.fields) {
+      for (const key of Object.keys(input.fields) as OrderEditableField[]) {
+        if (!ORDER_EDITABLE_FIELDS.includes(key)) continue;
+        let val = input.fields[key];
+        if (typeof val === "string") {
+          const trimmed = val.trim();
+          val = trimmed === "" ? null : trimmed;
+        }
+        if (NUMERIC_ORDER_FIELDS.includes(key) && val != null && val !== "") {
+          const n = typeof val === "number" ? val : Number(val);
+          if (Number.isNaN(n)) throw new Error(`${key} must be a number`);
+          val = n;
+        }
+        cleaned[key] = val as string | number | null;
+      }
+    }
+    return { conversation_id: input.conversation_id, phone: input.phone ?? null, fields: cleaned };
+  })
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+
+    // Determine order_sequence and default order_type from existing rows for phone
+    let nextSeq = 1;
+    let defaultType: "first_order" | "repeat" = "first_order";
+    if (data.phone) {
+      const { data: existing, error: exErr } = await supabase
+        .from("orders")
+        .select("order_sequence")
+        .eq("phone", data.phone)
+        .order("order_sequence", { ascending: false })
+        .limit(1);
+      if (exErr) {
+        console.error("[orders] sequence lookup error:", exErr);
+      } else if (existing && existing.length > 0) {
+        const maxSeq = Number(existing[0].order_sequence ?? 0);
+        nextSeq = (Number.isNaN(maxSeq) ? 0 : maxSeq) + 1;
+        defaultType = "repeat";
+      }
+    }
+
+    const insertRow: Record<string, unknown> = {
+      conversation_id: data.conversation_id,
+      phone: data.phone,
+      order_sequence: nextSeq,
+      order_type: data.fields.order_type ?? defaultType,
+      ...data.fields,
+    };
+    // Ensure defaults not clobbered by empty fields obj
+    if (!insertRow.order_type) insertRow.order_type = defaultType;
+    insertRow.order_sequence = nextSeq;
+
+    const { data: inserted, error } = await supabase
+      .from("orders")
+      .insert(insertRow)
+      .select(ORDER_SELECT)
+      .single();
+    if (error) {
+      console.error("[orders] create error:", error);
+      return { ok: false, row: null as OrderRow | null, error: GENERIC_WRITE_ERROR };
+    }
+    return { ok: true, row: inserted as OrderRow, error: null as string | null };
+  });
