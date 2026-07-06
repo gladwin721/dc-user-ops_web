@@ -633,15 +633,15 @@ function OperatorDashboard() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold">Booking details</h2>
-            <p className="truncate text-xs text-muted-foreground">From the selected conversation</p>
+            <h2 className="truncate text-sm font-semibold">Order details</h2>
+            <p className="truncate text-xs text-muted-foreground">Orders for this customer</p>
           </div>
           <Button
             variant="ghost"
             size="icon"
             className="hidden h-7 w-7 md:inline-flex"
             onClick={() => setRightOpen(false)}
-            title="Collapse booking details"
+            title="Collapse order details"
           >
             <PanelRightClose className="h-4 w-4" />
           </Button>
@@ -650,33 +650,38 @@ function OperatorDashboard() {
           {!selected ? (
             <p className="text-sm text-muted-foreground">No conversation selected.</p>
           ) : (
-            <BookingDetailsPanel
-              key={String(selected.id)}
-              row={selected}
-              onSaveFields={(fields) =>
+            <OrderDetailsPanel
+              conversation={selected}
+              orders={orders}
+              ordersLoading={ordersQuery.isLoading}
+              selectedOrderId={selectedOrderId}
+              onSelectOrder={setSelectedOrderId}
+              onSaveConversationFields={(fields) =>
                 updateFieldsFn({ data: { id: selected.id, fields } }).then((res) => {
                   if (!res.ok) throw new Error(res.error ?? "Save failed");
                   qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
                   qc.invalidateQueries({ queryKey: ["conversations"] });
                 })
               }
-              onSaveCook={(cook_assigned) =>
-                updateCookFn({
-                  data: { conversation_id: selected.id, cook_assigned },
-                }).then((res) => {
+              onSaveOrderFields={(orderId, fields) =>
+                updateOrderFn({ data: { id: orderId, fields } }).then((res) => {
                   if (!res.ok) throw new Error(res.error ?? "Save failed");
-                  qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+                  qc.invalidateQueries({ queryKey: ["orders", selectedId, selected.phone ?? null] });
                 })
               }
-              onSavePaymentLinks={(fields) =>
-                updatePayFn({
-                  data: { conversation_id: selected.id, fields },
-                }).then((res) => {
-                  if (!res.ok) throw new Error(res.error ?? "Save failed");
-                  qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
-                })
-              }
-
+              onCreateOrder={async (fields) => {
+                const res = await createOrderFn({
+                  data: {
+                    conversation_id: selected.id,
+                    phone: selected.phone,
+                    fields,
+                  },
+                });
+                if (!res.ok || !res.row) throw new Error(res.error ?? "Create failed");
+                await qc.invalidateQueries({ queryKey: ["orders", selectedId, selected.phone ?? null] });
+                setSelectedOrderId(res.row.id);
+                return res.row;
+              }}
             />
           )}
         </div>
