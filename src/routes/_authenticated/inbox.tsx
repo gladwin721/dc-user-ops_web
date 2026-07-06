@@ -313,14 +313,45 @@ function OperatorDashboard() {
         });
   const listError = listQuery.data?.error;
 
-  // Current server-side selected statuses
+  // Orders for the selected customer (multiple orders per conversation/phone)
+  const ordersQuery = useQuery({
+    queryKey: ["orders", selectedId, selected?.phone ?? null],
+    queryFn: () => listOrdersFn({ data: { conversation_id: selectedId!, phone: selected?.phone ?? null } }),
+    enabled: selectedId !== null && !!selected,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+  });
+  const orders: OrderRow[] = ordersQuery.data?.rows ?? [];
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  // When orders change (new conversation selected or list refresh), auto-select the newest if none valid
+  useEffect(() => {
+    if (orders.length === 0) {
+      if (selectedOrderId !== null) setSelectedOrderId(null);
+      return;
+    }
+    const exists = selectedOrderId && orders.some((o) => o.id === selectedOrderId);
+    if (!exists) setSelectedOrderId(orders[0].id);
+  }, [orders, selectedOrderId]);
+  // Reset selected order when switching conversations
+  useEffect(() => {
+    setSelectedOrderId(null);
+  }, [selectedId]);
+  const selectedOrder: OrderRow | null = useMemo(
+    () => orders.find((o) => o.id === selectedOrderId) ?? null,
+    [orders, selectedOrderId],
+  );
+
+  // Status display: prefer selected order's status; fallback to conversation
+  const effectiveStatusRaw = selectedOrder?.status ?? selected?.status ?? null;
   const selectedStatuses: BookingStatus[] = useMemo(
-    () => parseStatuses(selected?.status ?? null),
-    [selected?.status],
+    () => parseStatuses(effectiveStatusRaw),
+    [effectiveStatusRaw],
   );
   const showCancellationBar = pendingCancel || selectedStatuses.includes("cancelled");
 
   useTabNotifications(allRows, selectedId);
+
+
 
   return (
     <div className="flex h-[calc(100vh-3rem)] w-full overflow-hidden bg-background text-foreground">
