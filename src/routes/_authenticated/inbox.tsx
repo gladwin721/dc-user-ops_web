@@ -1087,181 +1087,467 @@ function StatusSelect({
   );
 }
 
-// ---------- Booking details panel (editable) ----------
+// ---------- Order details panel (editable, per-order) ----------
 
-function BookingDetailsPanel({
-  row,
-  onSaveFields,
-  onSaveCook,
-  onSavePaymentLinks,
+const ORDER_TYPES = ["first_order", "repeat", "subscription"] as const;
+type OrderTypeValue = (typeof ORDER_TYPES)[number];
+const ORDER_TYPE_LABELS: Record<OrderTypeValue, string> = {
+  first_order: "First Order",
+  repeat: "Repeat",
+  subscription: "Subscription",
+};
+
+const ORDER_CANCELLATION_REASONS: readonly string[] = [
+  "Customer unavailable",
+  "Customer cancelled",
+  "No cook available",
+  "Outside service area",
+  "Duplicate booking",
+  "No response",
+  "Subscription enquiry only",
+  "Other",
+];
+
+function formatOrderCreatedAt(value: string | null): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  const day = d.getDate().toString().padStart(2, "0");
+  const month = d.toLocaleString("en-US", { month: "short" });
+  const year = d.getFullYear();
+  let hours = d.getHours();
+  const mins = d.getMinutes().toString().padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+  return `${day} ${month} ${year} · ${hours}:${mins} ${ampm}`;
+}
+
+type OrderDraft = Partial<Record<
+  | "area"
+  | "booking_date"
+  | "booking_time"
+  | "people"
+  | "status"
+  | "order_type"
+  | "travel_charges"
+  | "cook_time_taken_in_mins"
+  | "cooking_amount_paid"
+  | "items_cooked"
+  | "notes"
+  | "rating"
+  | "cancellation_reason"
+  | "pre_booking_payment_link"
+  | "full_payment_link",
+  string | number | null
+>>;
+
+function OrderDetailsPanel({
+  conversation,
+  orders,
+  ordersLoading,
+  selectedOrderId,
+  onSelectOrder,
+  onSaveConversationFields,
+  onSaveOrderFields,
+  onCreateOrder,
 }: {
-  row: ConversationRow;
-  onSaveFields: (fields: Record<string, string | number | null>) => Promise<void>;
-  onSaveCook: (cook_assigned: string | null) => Promise<void>;
-  onSavePaymentLinks: (fields: Record<string, string | null>) => Promise<void>;
+  conversation: ConversationRow;
+  orders: OrderRow[];
+  ordersLoading: boolean;
+  selectedOrderId: string | null;
+  onSelectOrder: (id: string) => void;
+  onSaveConversationFields: (fields: Record<string, string | number | null>) => Promise<void>;
+  onSaveOrderFields: (orderId: string, fields: OrderDraft) => Promise<void>;
+  onCreateOrder: (fields: OrderDraft) => Promise<OrderRow>;
 }) {
-  const [area, setArea] = useState(row.area ?? "");
-  const [date, setDate] = useState(row.booking_date ?? "");
-  const [time, setTime] = useState(row.booking_time ?? "");
-  const [people, setPeople] = useState(row.people != null ? String(row.people) : "");
-  const [cook, setCook] = useState(row.cook_assigned ?? "");
-  const [subEnq, setSubEnq] = useState(row.subscription_enquiry ?? "");
-  const [source, setSource] = useState(row.conversation_source ?? "");
-  const [prepay, setPrepay] = useState(row.pre_booking_payment_link ?? "");
-  const [fullpay, setFullpay] = useState(row.full_payment_link ?? "");
-
-  // Sync when incoming row changes (polling)
-  useEffect(() => {
-    setArea(row.area ?? "");
-    setDate(row.booking_date ?? "");
-    setTime(row.booking_time ?? "");
-    setPeople(row.people != null ? String(row.people) : "");
-    setCook(row.cook_assigned ?? "");
-    setSubEnq(row.subscription_enquiry ?? "");
-    setSource(row.conversation_source ?? "");
-    setPrepay(row.pre_booking_payment_link ?? "");
-    setFullpay(row.full_payment_link ?? "");
-  }, [row.id]);
-
-  async function saveField(field: string, value: string, original: string) {
-    if (value === original) return;
-    try {
-      await onSaveFields({ [field]: value === "" ? null : value });
-      toast.success("Saved");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
-    }
-  }
-
-  async function savePaymentField(field: "pre_booking_payment_link" | "full_payment_link", value: string, original: string) {
-    if (value === original) return;
-    try {
-      await onSavePaymentLinks({ [field]: value.trim() === "" ? null : value.trim() });
-      toast.success("Saved");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
-    }
-  }
-
-
-
-  async function savePeople() {
-    const original = row.people != null ? String(row.people) : "";
-    if (people === original) return;
-    try {
-      const val = people.trim() === "" ? null : Number(people);
-      if (val !== null && Number.isNaN(val)) {
-        toast.error("People must be a number");
-        return;
-      }
-      await onSaveFields({ people: val });
-      toast.success("Saved");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
-    }
-  }
-
-  async function saveCookField() {
-    const original = row.cook_assigned ?? "";
-    if (cook === original) return;
-    try {
-      await onSaveCook(cook.trim() === "" ? null : cook.trim());
-      toast.success("Saved");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
-    }
-  }
-
-  async function saveSubEnqField() {
-    await saveField("subscription_enquiry", subEnq, row.subscription_enquiry ?? "");
-  }
+  const order = orders.find((o) => o.id === selectedOrderId) ?? null;
+  const [creating, setCreating] = useState(false);
 
   return (
     <div className="space-y-5">
-      <div className="space-y-3">
-        <EditableField
-          icon={<MapPin className="h-4 w-4" />}
-          label="Area"
-          value={area}
-          onChange={setArea}
-          onCommit={() => saveField("area", area, row.area ?? "")}
-          placeholder="e.g. HSR Layout"
+      {/* Order selector header */}
+      <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <Label className="text-xs text-muted-foreground">Order ID</Label>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => setCreating(true)}
+          >
+            <Plus className="mr-1 h-3.5 w-3.5" /> Create Order
+          </Button>
+        </div>
+        {ordersLoading && orders.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Loading orders…</p>
+        ) : orders.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No orders yet for this customer.</p>
+        ) : (
+          <Select value={selectedOrderId ?? ""} onValueChange={onSelectOrder}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select order…" />
+            </SelectTrigger>
+            <SelectContent>
+              {orders.map((o) => (
+                <SelectItem key={o.id} value={o.id} className="text-xs">
+                  {o.order_id ?? o.id.slice(0, 8)}
+                  {o.created_at ? ` · ${formatOrderCreatedAt(o.created_at)}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {order && (
+          <>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Order Type</Label>
+              <Select
+                value={(order.order_type as string) ?? ""}
+                onValueChange={(v) => onSaveOrderFields(order.id, { order_type: v }).then(() => toast.success("Saved")).catch((e) => toast.error(e instanceof Error ? e.message : "Save failed"))}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Select order type…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ORDER_TYPES.map((t) => (
+                    <SelectItem key={t} value={t} className="text-xs">
+                      {ORDER_TYPE_LABELS[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t pt-2">
+              <span className="text-xs text-muted-foreground">Created</span>
+              <span className="text-xs font-medium">{formatOrderCreatedAt(order.created_at)}</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {order && (
+        <OrderEditableFields
+          key={order.id}
+          order={order}
+          onSave={(fields) => onSaveOrderFields(order.id, fields)}
         />
-        <EditableField
-          icon={<Calendar className="h-4 w-4" />}
-          label="Date"
-          type="date"
-          value={date}
-          onChange={setDate}
-          onCommit={() => saveField("booking_date", date, row.booking_date ?? "")}
-        />
-        <EditableField
-          icon={<Clock className="h-4 w-4" />}
-          label="Time"
-          type="time"
-          value={time}
-          onChange={setTime}
-          onCommit={() => saveField("booking_time", time, row.booking_time ?? "")}
-        />
-        <EditableField
-          icon={<Users className="h-4 w-4" />}
-          label="People"
-          type="number"
-          value={people}
-          onChange={setPeople}
-          onCommit={savePeople}
-          placeholder="0"
-        />
-        <EditableField
-          icon={<ChefHat className="h-4 w-4" />}
-          label="Cook Assigned"
-          value={cook}
-          onChange={setCook}
-          onCommit={saveCookField}
-          placeholder="Assign a cook"
-        />
-        <EditableField
-          icon={<Repeat className="h-4 w-4" />}
-          label="Subscription Enquiry"
-          value={subEnq}
-          onChange={setSubEnq}
-          onCommit={saveSubEnqField}
-          placeholder="Details of subscription enquiry"
-          multiline
-        />
-        <EditableField
-          icon={<MessageSquare className="h-4 w-4" />}
-          label="Conversation Source"
-          value={source}
-          onChange={setSource}
-          onCommit={() => saveField("conversation_source", source, row.conversation_source ?? "")}
-          placeholder="e.g. WhatsApp, Instagram"
-        />
-        <EditableField
-          icon={<ExternalLink className="h-4 w-4" />}
-          label="Prepayment Link"
-          value={prepay}
-          onChange={setPrepay}
-          onCommit={() => savePaymentField("pre_booking_payment_link", prepay, row.pre_booking_payment_link ?? "")}
-          placeholder="https://…"
-        />
-        <EditableField
-          icon={<ExternalLink className="h-4 w-4" />}
-          label="Full Payment Link"
-          value={fullpay}
-          onChange={setFullpay}
-          onCommit={() => savePaymentField("full_payment_link", fullpay, row.full_payment_link ?? "")}
-          placeholder="https://…"
+      )}
+
+      {/* Customer information (conversation-level) */}
+      <div className="space-y-3 border-t pt-4">
+        <h3 className="text-sm font-semibold">Customer Information</h3>
+        <ConversationFields
+          conversation={conversation}
+          onSave={onSaveConversationFields}
         />
       </div>
 
-      <dl className="space-y-3 border-t pt-4 text-sm">
-        <DetailRow icon={<MessageSquare className="h-4 w-4" />} label="Status" value={row.status} />
-        <DetailRow icon={<Bot className="h-4 w-4" />} label="Mode" value={row.mode} />
-        <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={row.phone} />
-      </dl>
+      <CustomerLocation lat={conversation.location_lat} lng={conversation.location_lng} />
 
-      <CustomerLocation lat={row.location_lat} lng={row.location_lng} />
+      {creating && (
+        <CreateOrderDialog
+          onClose={() => setCreating(false)}
+          onCreate={async (fields) => {
+            try {
+              await onCreateOrder(fields);
+              toast.success("Order created");
+              setCreating(false);
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : "Create failed");
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function OrderEditableFields({
+  order,
+  onSave,
+}: {
+  order: OrderRow;
+  onSave: (fields: OrderDraft) => Promise<void>;
+}) {
+  const s = (v: unknown) => (v == null ? "" : String(v));
+  const [area, setArea] = useState(s(order.area));
+  const [date, setDate] = useState(s(order.booking_date));
+  const [time, setTime] = useState(s(order.booking_time));
+  const [people, setPeople] = useState(s(order.people));
+  const [cook, setCook] = useState(s(order.cook_assigned));
+  const [travel, setTravel] = useState(s(order.travel_charges));
+  const [cookTime, setCookTime] = useState(s(order.cook_time_taken_in_mins));
+  const [amount, setAmount] = useState(s(order.cooking_amount_paid));
+  const [items, setItems] = useState(s(order.items_cooked));
+  const [notes, setNotes] = useState(s(order.notes));
+  const [rating, setRating] = useState(s(order.rating));
+  const [cxReason, setCxReason] = useState(s(order.cancellation_reason));
+  const [prepay, setPrepay] = useState(s(order.pre_booking_payment_link));
+  const [fullpay, setFullpay] = useState(s(order.full_payment_link));
+
+  useEffect(() => {
+    setArea(s(order.area));
+    setDate(s(order.booking_date));
+    setTime(s(order.booking_time));
+    setPeople(s(order.people));
+    setCook(s(order.cook_assigned));
+    setTravel(s(order.travel_charges));
+    setCookTime(s(order.cook_time_taken_in_mins));
+    setAmount(s(order.cooking_amount_paid));
+    setItems(s(order.items_cooked));
+    setNotes(s(order.notes));
+    setRating(s(order.rating));
+    setCxReason(s(order.cancellation_reason));
+    setPrepay(s(order.pre_booking_payment_link));
+    setFullpay(s(order.full_payment_link));
+  }, [order.id]);
+
+  async function commit(field: keyof OrderDraft, value: string, original: string) {
+    if (value === original) return;
+    try {
+      await onSave({ [field]: value === "" ? null : value } as OrderDraft);
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <EditableField icon={<MapPin className="h-4 w-4" />} label="Area" value={area} onChange={setArea} onCommit={() => commit("area", area, s(order.area))} placeholder="e.g. HSR Layout" />
+      <EditableField icon={<Calendar className="h-4 w-4" />} label="Date" type="date" value={date} onChange={setDate} onCommit={() => commit("booking_date", date, s(order.booking_date))} />
+      <EditableField icon={<Clock className="h-4 w-4" />} label="Time" type="time" value={time} onChange={setTime} onCommit={() => commit("booking_time", time, s(order.booking_time))} />
+      <EditableField icon={<Users className="h-4 w-4" />} label="People" type="number" value={people} onChange={setPeople} onCommit={() => commit("people", people, s(order.people))} placeholder="0" />
+      <EditableField icon={<ChefHat className="h-4 w-4" />} label="Cook Assigned" value={cook} onChange={setCook} onCommit={() => commit("cook_assigned", cook, s(order.cook_assigned))} placeholder="Assign a cook" />
+      <EditableField icon={<Truck className="h-4 w-4" />} label="Travel Charges" type="number" value={travel} onChange={setTravel} onCommit={() => commit("travel_charges", travel, s(order.travel_charges))} placeholder="0" />
+      <EditableField icon={<Timer className="h-4 w-4" />} label="Cook Time Taken (mins)" type="number" value={cookTime} onChange={setCookTime} onCommit={() => commit("cook_time_taken_in_mins", cookTime, s(order.cook_time_taken_in_mins))} placeholder="0" />
+      <EditableField icon={<IndianRupee className="h-4 w-4" />} label="Amount Paid" type="number" value={amount} onChange={setAmount} onCommit={() => commit("cooking_amount_paid", amount, s(order.cooking_amount_paid))} placeholder="0" />
+      <EditableField icon={<Utensils className="h-4 w-4" />} label="Items Cooked" value={items} onChange={setItems} onCommit={() => commit("items_cooked", items, s(order.items_cooked))} placeholder="List items…" multiline />
+      <EditableField icon={<FileText className="h-4 w-4" />} label="Notes" value={notes} onChange={setNotes} onCommit={() => commit("notes", notes, s(order.notes))} placeholder="Notes…" multiline />
+
+      <div className="space-y-1">
+        <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Star className="h-4 w-4" /> Rating
+        </Label>
+        <Select
+          value={rating}
+          onValueChange={(v) => {
+            setRating(v);
+            commit("rating", v, s(order.rating));
+          }}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue placeholder="Select rating…" />
+          </SelectTrigger>
+          <SelectContent>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <SelectItem key={n} value={String(n)} className="text-xs">
+                {n} ★
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1">
+        <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <XCircle className="h-4 w-4" /> Cancellation Reason
+        </Label>
+        <Select
+          value={cxReason}
+          onValueChange={(v) => {
+            setCxReason(v);
+            commit("cancellation_reason", v, s(order.cancellation_reason));
+          }}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue placeholder="Select reason…" />
+          </SelectTrigger>
+          <SelectContent>
+            {ORDER_CANCELLATION_REASONS.map((r) => (
+              <SelectItem key={r} value={r} className="text-xs">
+                {r}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <EditableField icon={<ExternalLink className="h-4 w-4" />} label="Prepayment Link" value={prepay} onChange={setPrepay} onCommit={() => commit("pre_booking_payment_link", prepay, s(order.pre_booking_payment_link))} placeholder="https://…" />
+      <EditableField icon={<ExternalLink className="h-4 w-4" />} label="Full Payment Link" value={fullpay} onChange={setFullpay} onCommit={() => commit("full_payment_link", fullpay, s(order.full_payment_link))} placeholder="https://…" />
+    </div>
+  );
+}
+
+function ConversationFields({
+  conversation,
+  onSave,
+}: {
+  conversation: ConversationRow;
+  onSave: (fields: Record<string, string | number | null>) => Promise<void>;
+}) {
+  const [subEnq, setSubEnq] = useState(conversation.subscription_enquiry ?? "");
+  const [source, setSource] = useState(conversation.conversation_source ?? "");
+
+  useEffect(() => {
+    setSubEnq(conversation.subscription_enquiry ?? "");
+    setSource(conversation.conversation_source ?? "");
+  }, [conversation.id]);
+
+  async function save(field: string, value: string, original: string) {
+    if (value === original) return;
+    try {
+      await onSave({ [field]: value === "" ? null : value });
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <EditableField
+        icon={<Repeat className="h-4 w-4" />}
+        label="Subscription Enquiry"
+        value={subEnq}
+        onChange={setSubEnq}
+        onCommit={() => save("subscription_enquiry", subEnq, conversation.subscription_enquiry ?? "")}
+        placeholder="Details of subscription enquiry"
+        multiline
+      />
+      <EditableField
+        icon={<MessageSquare className="h-4 w-4" />}
+        label="Conversation Source"
+        value={source}
+        onChange={setSource}
+        onCommit={() => save("conversation_source", source, conversation.conversation_source ?? "")}
+        placeholder="e.g. WhatsApp, Instagram"
+      />
+    </div>
+  );
+}
+
+function CreateOrderDialog({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (fields: OrderDraft) => Promise<void>;
+}) {
+  const [area, setArea] = useState("");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [people, setPeople] = useState("");
+  const [status, setStatus] = useState<string>("");
+  const [orderType, setOrderType] = useState<string>("");
+  const [travel, setTravel] = useState("");
+  const [cookTime, setCookTime] = useState("");
+  const [amount, setAmount] = useState("");
+  const [items, setItems] = useState("");
+  const [notes, setNotes] = useState("");
+  const [rating, setRating] = useState("");
+  const [cxReason, setCxReason] = useState("");
+  const [prepay, setPrepay] = useState("");
+  const [fullpay, setFullpay] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleCreate() {
+    setSaving(true);
+    const fields: OrderDraft = {};
+    if (area.trim()) fields.area = area.trim();
+    if (date.trim()) fields.booking_date = date.trim();
+    if (time.trim()) fields.booking_time = time.trim();
+    if (people.trim()) fields.people = people.trim();
+    if (status.trim()) fields.status = status.trim();
+    if (orderType.trim()) fields.order_type = orderType.trim();
+    if (travel.trim()) fields.travel_charges = travel.trim();
+    if (cookTime.trim()) fields.cook_time_taken_in_mins = cookTime.trim();
+    if (amount.trim()) fields.cooking_amount_paid = amount.trim();
+    if (items.trim()) fields.items_cooked = items.trim();
+    if (notes.trim()) fields.notes = notes.trim();
+    if (rating.trim()) fields.rating = rating.trim();
+    if (cxReason.trim()) fields.cancellation_reason = cxReason.trim();
+    if (prepay.trim()) fields.pre_booking_payment_link = prepay.trim();
+    if (fullpay.trim()) fields.full_payment_link = fullpay.trim();
+    try {
+      await onCreate(fields);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border bg-background p-4 shadow-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Create Order</h3>
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+        </div>
+        <div className="space-y-3">
+          <EditableField icon={<MapPin className="h-4 w-4" />} label="Area" value={area} onChange={setArea} onCommit={() => {}} placeholder="e.g. HSR Layout" />
+          <EditableField icon={<Calendar className="h-4 w-4" />} label="Date" type="date" value={date} onChange={setDate} onCommit={() => {}} />
+          <EditableField icon={<Clock className="h-4 w-4" />} label="Time" type="time" value={time} onChange={setTime} onCommit={() => {}} />
+          <EditableField icon={<Users className="h-4 w-4" />} label="People" type="number" value={people} onChange={setPeople} onCommit={() => {}} placeholder="0" />
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Status</Label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select status…" /></SelectTrigger>
+              <SelectContent>
+                {BOOKING_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s} className="text-xs">{STATUS_META[s].label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Order Type</Label>
+            <Select value={orderType} onValueChange={setOrderType}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Auto (first / repeat)" /></SelectTrigger>
+              <SelectContent>
+                {ORDER_TYPES.map((t) => (
+                  <SelectItem key={t} value={t} className="text-xs">{ORDER_TYPE_LABELS[t]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <EditableField icon={<Truck className="h-4 w-4" />} label="Travel Charges" type="number" value={travel} onChange={setTravel} onCommit={() => {}} />
+          <EditableField icon={<Timer className="h-4 w-4" />} label="Cook Time Taken (mins)" type="number" value={cookTime} onChange={setCookTime} onCommit={() => {}} />
+          <EditableField icon={<IndianRupee className="h-4 w-4" />} label="Amount Paid" type="number" value={amount} onChange={setAmount} onCommit={() => {}} />
+          <EditableField icon={<Utensils className="h-4 w-4" />} label="Items Cooked" value={items} onChange={setItems} onCommit={() => {}} multiline />
+          <EditableField icon={<FileText className="h-4 w-4" />} label="Notes" value={notes} onChange={setNotes} onCommit={() => {}} multiline />
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Rating</Label>
+            <Select value={rating} onValueChange={setRating}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select rating…" /></SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <SelectItem key={n} value={String(n)} className="text-xs">{n} ★</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Cancellation Reason</Label>
+            <Select value={cxReason} onValueChange={setCxReason}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select reason…" /></SelectTrigger>
+              <SelectContent>
+                {ORDER_CANCELLATION_REASONS.map((r) => (
+                  <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <EditableField icon={<ExternalLink className="h-4 w-4" />} label="Prepayment Link" value={prepay} onChange={setPrepay} onCommit={() => {}} placeholder="https://…" />
+          <EditableField icon={<ExternalLink className="h-4 w-4" />} label="Full Payment Link" value={fullpay} onChange={setFullpay} onCommit={() => {}} placeholder="https://…" />
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button size="sm" onClick={handleCreate} disabled={saving}>
+            {saving && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+            Create Order
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
