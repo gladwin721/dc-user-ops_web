@@ -274,16 +274,16 @@ function OperatorDashboard() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: async (args: { statuses: BookingStatus[]; cancellation_reason?: string | null }) => {
+    mutationFn: async (args: { statuses: BookingStatus[]; cancellation_reason?: string | null; orderId: string }) => {
       if (!selected) throw new Error("No conversation selected");
+      if (!args.orderId) throw new Error("No order selected");
       setStatusSaveState("saving");
-      const res = await saveStatusFn({
-        data: {
-          id: selected.id,
-          statuses: args.statuses,
-          cancellation_reason: args.cancellation_reason ?? null,
-        },
-      });
+      const ordered = (BOOKING_STATUSES as readonly BookingStatus[]).filter((s) => args.statuses.includes(s));
+      const fields: Record<string, string | number | null> = { status: ordered.join(",") };
+      if (ordered.includes("cancelled")) {
+        fields.cancellation_reason = (args.cancellation_reason ?? "").trim() || null;
+      }
+      const res = await updateOrderFn({ data: { id: args.orderId, fields } });
       if (!res.ok) throw new Error(res.error ?? "Failed to update status");
       return args.statuses;
     },
@@ -291,14 +291,13 @@ function OperatorDashboard() {
       setStatusSaveState("saved");
       const labels = statuses.map((s) => STATUS_META[s].label).join(", ");
       toast.success(`Status set to ${labels}`);
-      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
-      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["orders", selectedId] });
       setTimeout(() => setStatusSaveState("idle"), 1500);
     },
     onError: (err) => {
       setStatusSaveState("error");
       toast.error(err instanceof Error ? err.message : "Status change failed");
-      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+      qc.invalidateQueries({ queryKey: ["orders", selectedId] });
       setTimeout(() => setStatusSaveState("idle"), 2000);
     },
   });
