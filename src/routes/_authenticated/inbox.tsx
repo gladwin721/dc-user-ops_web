@@ -109,7 +109,7 @@ function OperatorDashboard() {
   const listFn = useServerFn(getConversations);
   const detailFn = useServerFn(getConversation);
   const updateModeFn = useServerFn(updateConversationMode);
-  const saveStatusFn = useServerFn(saveBookingStatus);
+  void saveBookingStatus;
   const sendFn = useServerFn(sendOperatorMessage);
   const updateFieldsFn = useServerFn(updateConversationFields);
   const listOrdersFn = useServerFn(getOrdersForConversation);
