@@ -569,8 +569,12 @@ function OperatorDashboard() {
                     toast.error("Please select a cancellation reason");
                     return;
                   }
+                  if (!selectedOrder) {
+                    toast.error("Create an order first to set status");
+                    return;
+                  }
                   statusMutation.mutate(
-                    { statuses: ["cancelled"], cancellation_reason: finalReason },
+                    { statuses: ["cancelled"], cancellation_reason: finalReason, orderId: selectedOrder.id },
                     { onSuccess: () => setPendingCancel(false) },
                   );
                 }}
