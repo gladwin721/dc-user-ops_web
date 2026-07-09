@@ -523,13 +523,17 @@ function OperatorDashboard() {
                   }
                   saveState={statusSaveState}
                   onChange={(status) => {
+                    if (!selectedOrder) {
+                      toast.error("Create an order first to set status");
+                      return;
+                    }
                     const wasCancelled = selectedStatuses.includes("cancelled");
                     if (status === "cancelled" && !wasCancelled) {
                       setPendingCancel(true);
                       return;
                     }
                     setPendingCancel(false);
-                    statusMutation.mutate({ statuses: [status] });
+                    statusMutation.mutate({ statuses: [status], orderId: selectedOrder.id });
                   }}
                 />
                 <ModeToggle
